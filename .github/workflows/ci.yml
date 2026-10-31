@@ -61,54 +61,49 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          set -euo pipefail
+          set -eu
           set -x
 
           echo "=== Fetching latest SDR++ release info ==="
           RELEASE_JSON=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest)
           echo "$RELEASE_JSON" | grep "browser_download_url" | head -20
 
-          echo "=== Trying to find Windows asset ==="
-          # Try multiple patterns for Windows asset
-          ASSET_URL=$(echo "$RELEASE_JSON" | grep "browser_download_url" | grep -i "portable" | grep -i "win" | head -1 | cut -d '"' -f 4)
+          echo "=== Finding Windows asset with jq (robust) ==="
+          # Use jq to parse JSON and find the Windows x64 zip asset
+          ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("sdrpp_windows_x64\\.zip$")) | .browser_download_url' | head -1)
 
-          if [ -z "$ASSET_URL" ]; then
-            echo "Pattern 'portable+win' failed, trying 'win64'..."
-            ASSET_URL=$(echo "$RELEASE_JSON" | grep "browser_download_url" | grep -i "win64" | head -1 | cut -d '"' -f 4)
+          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
+            echo "Primary pattern failed, trying fallback..."
+            ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("windows.*x64.*\\.zip$")) | .browser_download_url' | head -1)
           fi
 
-          if [ -z "$ASSET_URL" ]; then
-            echo "Pattern 'win64' failed, trying 'windows'..."
-            ASSET_URL=$(echo "$RELEASE_JSON" | grep "browser_download_url" | grep -i "windows" | head -1 | cut -d '"' -f 4)
+          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
+            echo "Fallback failed, trying any .zip with windows..."
+            ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("windows.*\\.zip$")) | .browser_download_url' | head -1)
           fi
 
-          if [ -z "$ASSET_URL" ]; then
-            echo "Pattern 'windows' failed, trying any .zip..."
-            ASSET_URL=$(echo "$RELEASE_JSON" | grep "browser_download_url" | grep "\.zip" | head -1 | cut -d '"' -f 4)
-          fi
-
-          if [ -z "$ASSET_URL" ]; then
+          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
             echo "ERROR: No Windows asset found in release"
-            echo "$RELEASE_JSON" | grep "browser_download_url"
+            echo "$RELEASE_JSON" | jq -r '.assets[].name'
             exit 1
           fi
 
           echo "=== Downloading SDR++ from: $ASSET_URL ==="
-          curl -L -o sdrpp_portable.zip "$ASSET_URL"
+          curl -L -o sdrpp_windows.zip "$ASSET_URL"
 
           echo "=== Verifying download ==="
-          ls -la sdrpp_portable.zip
-          file sdrpp_portable.zip
+          ls -la sdrpp_windows.zip
+          file sdrpp_windows.zip
 
           echo "=== Checking for 7z ==="
           which 7z || which 7za || which 7zr || (echo "7z not found!" && exit 1)
 
           echo "=== Extracting ==="
-          7z x sdrpp_portable.zip -osdrpp_install
+          7z x sdrpp_windows.zip -osdrpp_install
 
           echo "=== Finding extracted directory ==="
           find sdrpp_install -maxdepth 1 -type d
-          SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d -name "SDRPlusPlus*" | head -1)
+          SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d -name "*SDRPlusPlus*" -o -name "*sdrpp*" | head -1)
 
           if [ -z "$SDRPP_DIR" ]; then
             echo "No SDRPlusPlus* dir found, trying any subdir..."
@@ -129,54 +124,92 @@ jobs:
 
       - name: Download SDR++ portable (Linux)
         if: runner.os == 'Linux'
+        shell: bash
         run: |
-          # Get latest release asset URL for Linux (AppImage or tar.gz)
-          ASSET_URL=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest \
-            | grep "browser_download_url" \
-            | grep -i "linux" \
-            | grep -v "AppImage" \
-            | head -1 \
-            | cut -d '"' -f 4)
-          if [ -z "$ASSET_URL" ]; then
-            # Fallback to AppImage
-            ASSET_URL=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest \
-              | grep "browser_download_url" \
-              | grep -i "appimage" \
-              | head -1 \
-              | cut -d '"' -f 4)
+          set -eu
+          set -x
+
+          echo "=== Fetching latest SDR++ release info ==="
+          RELEASE_JSON=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest)
+
+          echo "=== Finding Linux asset with jq ==="
+          # Try .tar.gz first (not .deb, not AppImage)
+          ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("linux.*(amd64|x86_64).*\\.tar\\.gz$")) | .browser_download_url' | head -1)
+
+          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
+            echo "Trying any linux .tar.gz..."
+            ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("linux.*\\.tar\\.gz$")) | .browser_download_url' | head -1)
           fi
-          echo "Downloading SDR++ from: $ASSET_URL"
+
+          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
+            echo "Trying AppImage fallback..."
+            ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test(".*\\.AppImage$")) | .browser_download_url' | head -1)
+          fi
+
+          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
+            echo "ERROR: No Linux asset found in release"
+            echo "$RELEASE_JSON" | jq -r '.assets[].name'
+            exit 1
+          fi
+
+          echo "=== Downloading SDR++ from: $ASSET_URL ==="
           curl -L -o sdrpp_linux.tar.gz "$ASSET_URL"
           mkdir -p sdrpp_install
           tar -xzf sdrpp_linux.tar.gz -C sdrpp_install
-          SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d -name "SDRPlusPlus*" | head -1)
+          SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d -name "*SDRPlusPlus*" -o -name "*sdrpp*" | head -1)
           if [ -z "$SDRPP_DIR" ]; then
             SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d | grep -v "^sdrpp_install$" | head -1)
           fi
           echo "SDRPP_CORE_ROOT=$(pwd)/$SDRPP_DIR" >> $GITHUB_ENV
-          echo "SDR++ extracted to: $(pwd)/$SDRPP_DIR"
+          echo "=== SDR++ extracted to: $(pwd)/$SDRPP_DIR ==="
           ls -la "$(pwd)/$SDRPP_DIR"
 
       - name: Download SDR++ portable (macOS)
         if: runner.os == 'macOS'
+        shell: bash
         run: |
-          # Get latest release asset URL for macOS
-          ASSET_URL=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest \
-            | grep "browser_download_url" \
-            | grep -i "macos\|darwin\|osx" \
-            | head -1 \
-            | cut -d '"' -f 4)
-          echo "Downloading SDR++ from: $ASSET_URL"
-          curl -L -o sdrpp_macos.dmg "$ASSET_URL"
-          # DMG mounting on GitHub Actions macOS
-          hdiutil attach sdrpp_macos.dmg -mountpoint /Volumes/SDRPP
-          # Copy to local folder
-          cp -R /Volumes/SDRPP/SDRPlusPlus*.app sdrpp_install/
-          hdiutil detach /Volumes/SDRPP
-          SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d -name "SDRPlusPlus*" | head -1)
-          # For macOS app bundle, CMake config is in Contents/Frameworks or similar
+          set -eu
+          set -x
+
+          echo "=== Fetching latest SDR++ release info ==="
+          RELEASE_JSON=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest)
+
+          echo "=== Finding macOS asset with jq ==="
+          # Try .zip first (not .dmg - harder to automate)
+          ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("macos.*(arm|intel|universal).*\\.zip$")) | .browser_download_url' | head -1)
+
+          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
+            echo "Trying any macos .zip..."
+            ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("macos.*\\.zip$")) | .browser_download_url' | head -1)
+          fi
+
+          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
+            echo "Trying dmg fallback..."
+            ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test(".*\\.dmg$")) | .browser_download_url' | head -1)
+          fi
+
+          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
+            echo "ERROR: No macOS asset found in release"
+            echo "$RELEASE_JSON" | jq -r '.assets[].name'
+            exit 1
+          fi
+
+          echo "=== Downloading SDR++ from: $ASSET_URL ==="
+          if [[ "$ASSET_URL" == *.dmg ]]; then
+            curl -L -o sdrpp_macos.dmg "$ASSET_URL"
+            hdiutil attach sdrpp_macos.dmg -mountpoint /Volumes/SDRPP
+            mkdir -p sdrpp_install
+            cp -R /Volumes/SDRPP/SDRPlusPlus*.app sdrpp_install/
+            hdiutil detach /Volumes/SDRPP
+          else
+            curl -L -o sdrpp_macos.zip "$ASSET_URL"
+            mkdir -p sdrpp_install
+            unzip -q sdrpp_macos.zip -d sdrpp_install
+          fi
+
+          SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d -name "*SDRPlusPlus*" -o -name "*sdrpp*" | head -1)
           echo "SDRPP_CORE_ROOT=$(pwd)/$SDRPP_DIR" >> $GITHUB_ENV
-          echo "SDR++ extracted to: $(pwd)/$SDRPP_DIR"
+          echo "=== SDR++ extracted to: $(pwd)/$SDRPP_DIR ==="
           ls -la "$(pwd)/$SDRPP_DIR"
 
       - name: Configure CMake
