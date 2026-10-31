@@ -31,13 +31,9 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgJsonGlob: 'vcpkg.json'
-          vcpkgGitCommitId: 'd186940b2f0c4e8e5b4ff804af57d2a26fbfa091'
-          runVcpkgInstall: true
-
+      # =========================================================================
+      # LINUX: System packages only, no vcpkg
+      # =========================================================================
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -50,41 +46,46 @@ jobs:
             libvolk-dev libliquid-dsp-dev \
             pkg-config git
 
+      # =========================================================================
+      # MACOS: System packages only, no vcpkg (fix: absl → abseil)
+      # =========================================================================
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install cmake ninja protobuf cryptopp absl fmt spdlog nlohmann-json volk liquid-dsp pkg-config git
+          brew install cmake ninja protobuf cryptopp abseil fmt spdlog nlohmann-json volk liquid-dsp pkg-config git
 
-      - name: Build SDR++ from source (Windows)
+      # =========================================================================
+      # WINDOWS: Install vcpkg manually, use for static linking
+      # =========================================================================
+      - name: Setup vcpkg (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: |
           set -eu
           set -x
 
-          echo "=== Cloning SDR++ repository ==="
-          git clone --depth 1 --branch master https://github.com/AlexandreRouma/SDRPlusPlus.git sdrpp_src
+          echo "=== Installing vcpkg ==="
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git C:/vcpkg
+          cd C:/vcpkg
+          ./bootstrap-vcpkg.bat
 
-          echo "=== Building SDR++ with vcpkg toolchain ==="
-          cd sdrpp_src
-          mkdir -p build
-          cd build
-          cmake .. \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DCMAKE_INSTALL_PREFIX=$(pwd)/../install
-          cmake --build . --config Release --parallel 4
-          cmake --install .
+          echo "=== Installing dependencies via vcpkg ==="
+          ./vcpkg install \
+            protobuf \
+            cryptopp \
+            abseil \
+            fmt \
+            spdlog \
+            nlohmann-json \
+            glfw3 \
+            --triplet x64-windows-static-md
 
-          echo "=== SDR++ built and installed to: $(pwd)/../install ==="
-          ls -la $(pwd)/../install
+          echo "VCPKG_ROOT=C:/vcpkg" >> $GITHUB_ENV
 
-          # Find CMake config
-          find $(pwd)/../install -name "SDRPlusPlusConfig.cmake" -o -name "SDRPlusPlus*.cmake" | head -5
-
-          echo "SDRPP_CORE_ROOT=$(pwd)/../install" >> $GITHUB_ENV
-
+      # =========================================================================
+      # Build SDR++ from source on ALL platforms
+      # =========================================================================
       - name: Build SDR++ from source (Linux)
         if: runner.os == 'Linux'
         shell: bash
@@ -95,7 +96,7 @@ jobs:
           echo "=== Cloning SDR++ repository ==="
           git clone --depth 1 --branch master https://github.com/AlexandreRouma/SDRPlusPlus.git sdrpp_src
 
-          echo "=== Building SDR++ ==="
+          echo "=== Building SDR++ (system packages) ==="
           cd sdrpp_src
           mkdir -p build
           cd build
@@ -108,7 +109,6 @@ jobs:
           echo "=== SDR++ built and installed to: $(pwd)/../install ==="
           ls -la $(pwd)/../install
 
-          # Find CMake config
           find $(pwd)/../install -name "SDRPlusPlusConfig.cmake" -o -name "SDRPlusPlus*.cmake" | head -5
 
           echo "SDRPP_CORE_ROOT=$(pwd)/../install" >> $GITHUB_ENV
@@ -123,7 +123,7 @@ jobs:
           echo "=== Cloning SDR++ repository ==="
           git clone --depth 1 --branch master https://github.com/AlexandreRouma/SDRPlusPlus.git sdrpp_src
 
-          echo "=== Building SDR++ ==="
+          echo "=== Building SDR++ (system packages) ==="
           cd sdrpp_src
           mkdir -p build
           cd build
@@ -136,19 +136,72 @@ jobs:
           echo "=== SDR++ built and installed to: $(pwd)/../install ==="
           ls -la $(pwd)/../install
 
-          # Find CMake config
           find $(pwd)/../install -name "SDRPlusPlusConfig.cmake" -o -name "SDRPlusPlus*.cmake" | head -5
 
           echo "SDRPP_CORE_ROOT=$(pwd)/../install" >> $GITHUB_ENV
 
-      - name: Configure CMake
+      - name: Build SDR++ from source (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          set -x
+
+          echo "=== Cloning SDR++ repository ==="
+          git clone --depth 1 --branch master https://github.com/AlexandreRouma/SDRPlusPlus.git sdrpp_src
+
+          echo "=== Building SDR++ with vcpkg toolchain (static) ==="
+          cd sdrpp_src
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_INSTALL_PREFIX=$(pwd)/../install \
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
+          cmake --build . --config Release --parallel 4
+          cmake --install .
+
+          echo "=== SDR++ built and installed to: $(pwd)/../install ==="
+          ls -la $(pwd)/../install
+
+          find $(pwd)/../install -name "SDRPlusPlusConfig.cmake" -o -name "SDRPlusPlus*.cmake" | head -5
+
+          echo "SDRPP_CORE_ROOT=$(pwd)/../install" >> $GITHUB_ENV
+
+      # =========================================================================
+      # Configure and build plugin
+      # Linux/macOS: system packages (no toolchain)
+      # Windows: vcpkg toolchain for static linking
+      # =========================================================================
+      - name: Configure CMake (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSDRPP_CORE_ROOT="$SDRPP_CORE_ROOT" \
+            -DCMAKE_INSTALL_PREFIX=./install
+
+      - name: Configure CMake (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSDRPP_CORE_ROOT="$SDRPP_CORE_ROOT" \
+            -DCMAKE_INSTALL_PREFIX=./install
+
+      - name: Configure CMake (Windows)
+        if: runner.os == 'Windows'
         shell: bash
         run: |
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DSDRPP_CORE_ROOT="$SDRPP_CORE_ROOT" \
             -DCMAKE_INSTALL_PREFIX=./install \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+            -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
 
       - name: Build
         shell: bash
