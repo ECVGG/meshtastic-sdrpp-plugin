@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: meshtastic-linux-x64
+            plugin_suffix: ".so"
+          - os: macos-latest
+            artifact_name: meshtastic-macos-x64
+            plugin_suffix: ".dylib"
+          - os: windows-latest
+            artifact_name: meshtastic-windows-x64
+            plugin_suffix: ".dll"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup vcpkg (Windows)
+        if: runner.os == 'Windows'
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: 'C:/vcpkg'
+          vcpkgGitCommitId: 'd87e3c3c2f1c6f1c4e8c5c8e2c5b8f3c5c8e2c5b8'
+          vcpkgArguments: 'protobuf cryptopp absl fmt spdlog nlohmann-json volk liquid-dsp'
+          runVcpkgInstall: true
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake ninja-build \
+            libprotobuf-dev protobuf-compiler \
+            libcryptopp-dev \
+            libabsl-dev libfmt-dev libspdlog-dev nlohmann-json3-dev \
+            libvolk-dev libliquid-dsp-dev \
+            pkg-config git
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install cmake ninja protobuf cryptopp absl fmt spdlog nlohmann-json volk liquid-dsp pkg-config git
+
+      - name: Clone SDR++ (for CMake config)
+        run: |
+          git clone --depth 1 --branch master https://github.com/AlexandreRouma/SDRPlusPlus.git sdrpp_src
+          cd sdrpp_src
+          mkdir build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_GUI=OFF -DBUILD_SERVER=OFF -DBUILD_PLUGINS=OFF
+          cmake --build . --config Release --parallel 4
+          cd ../..
+          echo "SDRPP_CORE_ROOT=$(pwd)/sdrpp_src/build" >> $GITHUB_ENV
+
+      - name: Configure CMake
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSDRPP_CORE_ROOT=$SDRPP_CORE_ROOT \
+            -DCMAKE_INSTALL_PREFIX=./install
+
+      - name: Build
+        run: |
+          cmake --build build --config Release --parallel 4
+
+      - name: Install
+        run: |
+          cmake --install build --prefix ./install
+
+      - name: Verify plugin exists
+        run: |
+          ls -la ./install/
+          find ./install -name "*meshtastic*" -type f
+
+      - name: Package artifact
+        run: |
+          mkdir -p ./artifact
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            cp ./install/meshtastic.dll ./artifact/
+          elif [ "${{ runner.os }}" == "Darwin" ]; then
+            cp ./install/libmeshtastic.dylib ./artifact/meshtastic.dylib
+          else
+            cp ./install/libmeshtastic.so ./artifact/meshtastic.so
+          fi
+          ls -la ./artifact/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ./artifact/
+          retention-days: 30
+
+  release:
+    name: Create Release
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -laR ./artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ./artifacts/*
+          generate_release_notes: true
