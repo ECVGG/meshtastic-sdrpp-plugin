@@ -61,21 +61,71 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          # Get latest release asset URL for Windows portable
-          ASSET_URL=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest \
-            | grep "browser_download_url" \
-            | grep -i "portable" \
-            | grep -i "win" \
-            | head -1 \
-            | cut -d '"' -f 4)
-          echo "Downloading SDR++ from: $ASSET_URL"
+          set -euo pipefail
+          set -x
+
+          echo "=== Fetching latest SDR++ release info ==="
+          RELEASE_JSON=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest)
+          echo "$RELEASE_JSON" | grep "browser_download_url" | head -20
+
+          echo "=== Trying to find Windows asset ==="
+          # Try multiple patterns for Windows asset
+          ASSET_URL=$(echo "$RELEASE_JSON" | grep "browser_download_url" | grep -i "portable" | grep -i "win" | head -1 | cut -d '"' -f 4)
+
+          if [ -z "$ASSET_URL" ]; then
+            echo "Pattern 'portable+win' failed, trying 'win64'..."
+            ASSET_URL=$(echo "$RELEASE_JSON" | grep "browser_download_url" | grep -i "win64" | head -1 | cut -d '"' -f 4)
+          fi
+
+          if [ -z "$ASSET_URL" ]; then
+            echo "Pattern 'win64' failed, trying 'windows'..."
+            ASSET_URL=$(echo "$RELEASE_JSON" | grep "browser_download_url" | grep -i "windows" | head -1 | cut -d '"' -f 4)
+          fi
+
+          if [ -z "$ASSET_URL" ]; then
+            echo "Pattern 'windows' failed, trying any .zip..."
+            ASSET_URL=$(echo "$RELEASE_JSON" | grep "browser_download_url" | grep "\.zip" | head -1 | cut -d '"' -f 4)
+          fi
+
+          if [ -z "$ASSET_URL" ]; then
+            echo "ERROR: No Windows asset found in release"
+            echo "$RELEASE_JSON" | grep "browser_download_url"
+            exit 1
+          fi
+
+          echo "=== Downloading SDR++ from: $ASSET_URL ==="
           curl -L -o sdrpp_portable.zip "$ASSET_URL"
+
+          echo "=== Verifying download ==="
+          ls -la sdrpp_portable.zip
+          file sdrpp_portable.zip
+
+          echo "=== Checking for 7z ==="
+          which 7z || which 7za || which 7zr || (echo "7z not found!" && exit 1)
+
+          echo "=== Extracting ==="
           7z x sdrpp_portable.zip -osdrpp_install
-          # Find the extracted folder (usually SDRPlusPlus-*)
+
+          echo "=== Finding extracted directory ==="
+          find sdrpp_install -maxdepth 1 -type d
           SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d -name "SDRPlusPlus*" | head -1)
+
+          if [ -z "$SDRPP_DIR" ]; then
+            echo "No SDRPlusPlus* dir found, trying any subdir..."
+            SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d | grep -v "^sdrpp_install$" | head -1)
+          fi
+
+          if [ -z "$SDRPP_DIR" ]; then
+            echo "ERROR: Could not find extracted SDR++ directory"
+            exit 1
+          fi
+
           echo "SDRPP_CORE_ROOT=$(pwd)/$SDRPP_DIR" >> $GITHUB_ENV
-          echo "SDR++ extracted to: $(pwd)/$SDRPP_DIR"
+          echo "=== SDR++ extracted to: $(pwd)/$SDRPP_DIR ==="
           ls -la "$(pwd)/$SDRPP_DIR"
+
+          echo "=== Verifying CMake config exists ==="
+          find "$(pwd)/$SDRPP_DIR" -name "SDRPlusPlusConfig.cmake" -o -name "SDRPlusPlus*.cmake" | head -5
 
       - name: Download SDR++ portable (Linux)
         if: runner.os == 'Linux'
