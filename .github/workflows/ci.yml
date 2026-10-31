@@ -59,6 +59,7 @@ jobs:
 
       - name: Download SDR++ portable (Windows)
         if: runner.os == 'Windows'
+        shell: bash
         run: |
           # Get latest release asset URL for Windows portable
           ASSET_URL=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest \
@@ -129,6 +130,7 @@ jobs:
           ls -la "$(pwd)/$SDRPP_DIR"
 
       - name: Configure CMake
+        shell: bash
         run: |
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -136,19 +138,23 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=./install
 
       - name: Build
+        shell: bash
         run: |
           cmake --build build --config Release --parallel 4
 
       - name: Install
+        shell: bash
         run: |
           cmake --install build --prefix ./install
 
       - name: Verify plugin exists
+        shell: bash
         run: |
           ls -la ./install/
           find ./install -name "*meshtastic*" -type f
 
       - name: Package artifact
+        shell: bash
         run: |
           mkdir -p ./artifact
           if [ "${{ runner.os }}" == "Windows" ]; then
