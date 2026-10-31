@@ -4,8 +4,6 @@
   "dependencies": [
     "protobuf",
     "cryptopp",
-    "liquid-dsp",
-    "volk",
     "abseil",
     "fmt",
     "spdlog",
