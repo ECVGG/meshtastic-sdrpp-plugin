@@ -55,7 +55,6 @@ set(SDRPP_CMAKE_DIR "${SDRPP_CORE_ROOT}/lib/cmake/SDRPlusPlus" CACHE PATH "Path 
 find_package(SDRPlusPlus REQUIRED
     PATHS "${SDRPP_CMAKE_DIR}"
     NO_DEFAULT_PATH
-    DOC "SDR++ core libraries and headers"
 )
 
 message(STATUS "Found SDR++: ${SDRPlusPlus_VERSION}")

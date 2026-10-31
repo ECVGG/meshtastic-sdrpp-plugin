@@ -217,8 +217,9 @@ jobs:
         run: |
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
-            -DSDRPP_CORE_ROOT=$SDRPP_CORE_ROOT \
-            -DCMAKE_INSTALL_PREFIX=./install
+            -DSDRPP_CORE_ROOT="$SDRPP_CORE_ROOT" \
+            -DCMAKE_INSTALL_PREFIX=./install \
+            -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
 
       - name: Build
         shell: bash
