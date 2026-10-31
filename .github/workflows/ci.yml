@@ -74,7 +74,7 @@ jobs:
           cd C:/vcpkg
           ./bootstrap-vcpkg.bat
 
-          echo "=== Installing dependencies via vcpkg ==="
+          echo "=== Installing dependencies via vcpkg (dynamic triplet for shared libs) ==="
           ./vcpkg install \
             protobuf \
             cryptopp \
@@ -85,7 +85,12 @@ jobs:
             glfw3 \
             fftw3 \
             zstd \
-            --triplet x64-windows-static-md
+            volk \
+            liquid-dsp \
+            soapysdr \
+            hidapi \
+            libusb \
+            --triplet x64-windows
 
           echo "VCPKG_ROOT=C:/vcpkg" >> $GITHUB_ENV
 
@@ -156,7 +161,7 @@ jobs:
           echo "=== Cloning SDR++ repository ==="
           git clone --depth 1 --branch master https://github.com/AlexandreRouma/SDRPlusPlus.git sdrpp_src
 
-          echo "=== Building SDR++ with vcpkg toolchain (static) ==="
+          echo "=== Building SDR++ with vcpkg toolchain (dynamic triplet for shared libs) ==="
           cd sdrpp_src
           mkdir -p build
           cd build
@@ -164,7 +169,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" \
             -DCMAKE_INSTALL_PREFIX=$(pwd)/../install \
-            -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
+            -DVCPKG_TARGET_TRIPLET=x64-windows
           cmake --build . --config Release --parallel 4
           cmake --install .
 
@@ -207,7 +212,7 @@ jobs:
             -DSDRPP_CORE_ROOT="$SDRPP_CORE_ROOT" \
             -DCMAKE_INSTALL_PREFIX=./install \
             -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
+            -DVCPKG_TARGET_TRIPLET=x64-windows
 
       - name: Build
         shell: bash
