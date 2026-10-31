@@ -213,24 +213,26 @@ jobs:
           echo "INCLUDE_DIR: $INCLUDE_DIR"
           echo "LIB_DIR: $LIB_DIR"
 
-          cat > "$SDRPP_ROOT/lib/cmake/SDRPlusPlus/SDRPlusPlusConfig.cmake" << 'EOF'
-# Minimal SDR++ config for plugin development
+          python3 -c "
+import os
+config_path = os.path.join('$SDRPP_ROOT', 'lib', 'cmake', 'SDRPlusPlus', 'SDRPlusPlusConfig.cmake')
+content = '''# Minimal SDR++ config for plugin development
 # Generated from portable release
 
-set(SDRPlusPlus_VERSION "1.0.0")
-set(SDRPlusPlus_INCLUDE_DIRS "${CMAKE_CURRENT_LIST_DIR}/../../../include")
-set(SDRPlusPlus_LIBRARY_DIRS "${CMAKE_CURRENT_LIST_DIR}/../../../")
+set(SDRPlusPlus_VERSION \"1.0.0\")
+set(SDRPlusPlus_INCLUDE_DIRS \"\${CMAKE_CURRENT_LIST_DIR}/../../../include\")
+set(SDRPlusPlus_LIBRARY_DIRS \"\${CMAKE_CURRENT_LIST_DIR}/../../../\")
 
 # Find SDR++ libraries
 find_library(SDRPlusPlus_SDRPlusPlus_LIBRARY
   NAMES sdrpp_core SDRPlusPlus
-  PATHS "${SDRPlusPlus_LIBRARY_DIRS}"
+  PATHS \"\${SDRPlusPlus_LIBRARY_DIRS}\"
   NO_DEFAULT_PATH
 )
 
 find_library(SDRPlusPlus_IMGUI_LIBRARY
   NAMES imgui
-  PATHS "${SDRPlusPlus_LIBRARY_DIRS}"
+  PATHS \"\${SDRPlusPlus_LIBRARY_DIRS}\"
   NO_DEFAULT_PATH
 )
 
@@ -238,29 +240,33 @@ find_library(SDRPlusPlus_IMGUI_LIBRARY
 if(SDRPlusPlus_SDRPlusPlus_LIBRARY AND NOT TARGET SDRPlusPlus::SDRPlusPlus)
   add_library(SDRPlusPlus::SDRPlusPlus SHARED IMPORTED)
   set_target_properties(SDRPlusPlus::SDRPlusPlus PROPERTIES
-    IMPORTED_LOCATION "${SDRPlusPlus_SDRPlusPlus_LIBRARY}"
-    INTERFACE_INCLUDE_DIRECTORIES "${SDRPlusPlus_INCLUDE_DIRS}"
+    IMPORTED_LOCATION \"\${SDRPlusPlus_SDRPlusPlus_LIBRARY}\"
+    INTERFACE_INCLUDE_DIRECTORIES \"\${SDRPlusPlus_INCLUDE_DIRS}\"
   )
 endif()
 
 if(SDRPlusPlus_IMGUI_LIBRARY AND NOT TARGET SDRPlusPlus::ImGui)
   add_library(SDRPlusPlus::ImGui SHARED IMPORTED)
   set_target_properties(SDRPlusPlus::ImGui PROPERTIES
-    IMPORTED_LOCATION "${SDRPlusPlus_IMGUI_LIBRARY}"
+    IMPORTED_LOCATION \"\${SDRPlusPlus_IMGUI_LIBRARY}\"
   )
 endif()
 
 # Provide compatibility variables
 set(SDRPlusPlus_LIBRARIES SDRPlusPlus::SDRPlusPlus)
-set(SDRPlusPlus_DEFINITIONS "")
+set(SDRPlusPlus_DEFINITIONS \"\")
 
 # Module install directory
-set(SDRPlusPlus_PLUGIN_INSTALL_DIR "modules" CACHE PATH "SDR++ plugin install directory")
+set(SDRPlusPlus_PLUGIN_INSTALL_DIR \"modules\" CACHE PATH \"SDR++ plugin install directory\")
 
-message(STATUS "Found SDR++ (portable): ${SDRPlusPlus_VERSION}")
-message(STATUS "SDR++ include dirs: ${SDRPlusPlus_INCLUDE_DIRS}")
-message(STATUS "SDR++ library dirs: ${SDRPlusPlus_LIBRARY_DIRS}")
-EOF
+message(STATUS \"Found SDR++ (portable): \${SDRPlusPlus_VERSION}\")
+message(STATUS \"SDR++ include dirs: \${SDRPlusPlus_INCLUDE_DIRS}\")
+message(STATUS \"SDR++ library dirs: \${SDRPlusPlus_LIBRARY_DIRS}\")
+'''
+with open(config_path, 'w') as f:
+    f.write(content)
+print('Created:', config_path)
+          "
 
           echo "=== Created SDRPlusPlusConfig.cmake ==="
           cat "$SDRPP_ROOT/lib/cmake/SDRPlusPlus/SDRPlusPlusConfig.cmake"
