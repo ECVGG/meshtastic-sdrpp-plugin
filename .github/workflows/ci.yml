@@ -86,7 +86,6 @@ jobs:
             fftw3 \
             zstd \
             volk \
-            liquid-dsp \
             soapysdr \
             hidapi \
             libusb \
