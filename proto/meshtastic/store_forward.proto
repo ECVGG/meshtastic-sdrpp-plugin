@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package meshtastic;
+
+option cc_enable_arenas = true;
+
+message StoreForward {
+    message Message {
+        bytes payload = 1;
+        uint32 from = 2;
+        uint32 to = 3;
+        uint32 id = 4;
+        uint32 timestamp = 5;
+        uint32 channel = 6;
+        uint32 hop_limit = 7;
+        uint32 priority = 8;
+    }
+
+    repeated Message messages = 1;
+}

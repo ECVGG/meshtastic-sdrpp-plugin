@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package meshtastic;
+
+option cc_enable_arenas = true;
+
+message NeighborInfo {
+    message Neighbor {
+        uint32 node_id = 1;
+        int32 snr = 2;
+        int32 last_heard = 3;
+        int32 rx_count = 4;
+        int32 tx_count = 5;
+    }
+
+    repeated Neighbor neighbors = 1;
+}

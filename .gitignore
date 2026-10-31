@@ -1,0 +1,57 @@
+# Build directories
+build/
+build_*/
+out/
+*.build/
+
+# CMake files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+*.cmake
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Compiled objects
+*.o
+*.obj
+*.lib
+*.dll
+*.so
+*.dylib
+*.exp
+*.pdb
+*.ilk
+
+# Package files
+*.tar.gz
+*.zip
+*.deb
+*.rpm
+*.exe
+*.msi
+
+# Generated files
+proto/meshtastic/*.pb.h
+proto/meshtastic/*.pb.cc
+include/Version.h
+
+# Test files
+Testing/
+test_*.xml
+
+# Logs
+*.log
+
+# Local config
+meshtastic_config.json
