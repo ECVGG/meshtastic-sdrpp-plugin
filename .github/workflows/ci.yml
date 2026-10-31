@@ -56,7 +56,7 @@ jobs:
           brew install cmake ninja protobuf cryptopp abseil fmt spdlog nlohmann-json volk liquid-dsp pkg-config git
 
       # =========================================================================
-      # WINDOWS: Install vcpkg manually, use for static linking
+      # WINDOWS: Install vcpkg for plugin deps, use portable SDR++ release
       # =========================================================================
       - name: Setup vcpkg (Windows)
         if: runner.os == 'Windows'
@@ -74,7 +74,7 @@ jobs:
           cd C:/vcpkg
           ./bootstrap-vcpkg.bat
 
-          echo "=== Installing dependencies via vcpkg (dynamic triplet for shared libs) ==="
+          echo "=== Installing plugin dependencies via vcpkg ==="
           ./vcpkg install \
             protobuf \
             cryptopp \
@@ -82,19 +82,12 @@ jobs:
             fmt \
             spdlog \
             nlohmann-json \
-            glfw3 \
-            fftw3 \
-            zstd \
-            volk \
-            soapysdr \
-            hidapi \
-            libusb \
             --triplet x64-windows
 
           echo "VCPKG_ROOT=C:/vcpkg" >> $GITHUB_ENV
 
       # =========================================================================
-      # Build SDR++ from source on ALL platforms
+      # Build SDR++ from source (Linux/macOS) - use system packages
       # =========================================================================
       - name: Build SDR++ from source (Linux)
         if: runner.os == 'Linux'
@@ -150,34 +143,129 @@ jobs:
 
           echo "SDRPP_CORE_ROOT=$(pwd)/../install" >> $GITHUB_ENV
 
-      - name: Build SDR++ from source (Windows)
+      # =========================================================================
+      # WINDOWS: Use portable SDR++ release + generate minimal CMake config
+      # =========================================================================
+      - name: Setup SDR++ portable (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: |
           set -eu
           set -x
 
-          echo "=== Cloning SDR++ repository ==="
-          git clone --depth 1 --branch master https://github.com/AlexandreRouma/SDRPlusPlus.git sdrpp_src
+          echo "=== Fetching latest SDR++ release info ==="
+          RELEASE_JSON=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest)
 
-          echo "=== Building SDR++ with vcpkg toolchain (dynamic triplet for shared libs) ==="
-          cd sdrpp_src
-          mkdir -p build
-          cd build
-          cmake .. \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" \
-            -DCMAKE_INSTALL_PREFIX=$(pwd)/../install \
-            -DVCPKG_TARGET_TRIPLET=x64-windows
-          cmake --build . --config Release --parallel 4
-          cmake --install .
+          echo "=== Finding Windows asset with jq ==="
+          ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("sdrpp_windows_x64\\.zip$")) | .browser_download_url' | head -1)
 
-          echo "=== SDR++ built and installed to: $(pwd)/../install ==="
-          ls -la $(pwd)/../install
+          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
+            echo "Primary pattern failed, trying fallback..."
+            ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("windows.*x64.*\\.zip$")) | .browser_download_url' | head -1)
+          fi
 
-          find $(pwd)/../install -name "SDRPlusPlusConfig.cmake" -o -name "SDRPlusPlus*.cmake" | head -5
+          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
+            echo "ERROR: No Windows asset found in release"
+            echo "$RELEASE_JSON" | jq -r '.assets[].name'
+            exit 1
+          fi
 
-          echo "SDRPP_CORE_ROOT=$(pwd)/../install" >> $GITHUB_ENV
+          echo "=== Downloading SDR++ from: $ASSET_URL ==="
+          curl -L -o sdrpp_windows.zip "$ASSET_URL"
+
+          echo "=== Extracting ==="
+          7z x sdrpp_windows.zip -osdrpp_install
+
+          echo "=== Finding extracted directory ==="
+          find sdrpp_install -maxdepth 1 -type d
+          SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d -name "*SDRPlusPlus*" -o -name "*sdrpp*" | head -1)
+
+          if [ -z "$SDRPP_DIR" ]; then
+            SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d | grep -v "^sdrpp_install$" | head -1)
+          fi
+
+          if [ -z "$SDRPP_DIR" ]; then
+            echo "ERROR: Could not find extracted SDR++ directory"
+            exit 1
+          fi
+
+          SDRPP_ROOT=$(pwd)/$SDRPP_DIR
+          echo "SDR++ extracted to: $SDRPP_ROOT"
+          ls -la "$SDRPP_ROOT"
+
+          echo "=== Creating minimal SDRPlusPlusConfig.cmake ==="
+          mkdir -p "$SDRPP_ROOT/lib/cmake/SDRPlusPlus"
+
+          # Find include and lib directories
+          INCLUDE_DIR=$(find "$SDRPP_ROOT" -name "SDRPlusPlus" -type d | grep -E "include|Include" | head -1)
+          if [ -z "$INCLUDE_DIR" ]; then
+            INCLUDE_DIR=$(find "$SDRPP_ROOT" -name "*.h" -path "*/include/*" | head -1 | xargs dirname | xargs dirname)
+          fi
+          if [ -z "$INCLUDE_DIR" ]; then
+            INCLUDE_DIR="$SDRPP_ROOT/include"
+          fi
+
+          LIB_DIR=$(find "$SDRPP_ROOT" -name "*.lib" -o -name "*.dll" | head -1 | xargs dirname)
+          if [ -z "$LIB_DIR" ]; then
+            LIB_DIR="$SDRPP_ROOT"
+          fi
+
+          echo "INCLUDE_DIR: $INCLUDE_DIR"
+          echo "LIB_DIR: $LIB_DIR"
+
+          cat > "$SDRPP_ROOT/lib/cmake/SDRPlusPlus/SDRPlusPlusConfig.cmake" << 'EOF'
+# Minimal SDR++ config for plugin development
+# Generated from portable release
+
+set(SDRPlusPlus_VERSION "1.0.0")
+set(SDRPlusPlus_INCLUDE_DIRS "${CMAKE_CURRENT_LIST_DIR}/../../../include")
+set(SDRPlusPlus_LIBRARY_DIRS "${CMAKE_CURRENT_LIST_DIR}/../../../")
+
+# Find SDR++ libraries
+find_library(SDRPlusPlus_SDRPlusPlus_LIBRARY
+  NAMES sdrpp_core SDRPlusPlus
+  PATHS "${SDRPlusPlus_LIBRARY_DIRS}"
+  NO_DEFAULT_PATH
+)
+
+find_library(SDRPlusPlus_IMGUI_LIBRARY
+  NAMES imgui
+  PATHS "${SDRPlusPlus_LIBRARY_DIRS}"
+  NO_DEFAULT_PATH
+)
+
+# Create imported targets
+if(SDRPlusPlus_SDRPlusPlus_LIBRARY AND NOT TARGET SDRPlusPlus::SDRPlusPlus)
+  add_library(SDRPlusPlus::SDRPlusPlus SHARED IMPORTED)
+  set_target_properties(SDRPlusPlus::SDRPlusPlus PROPERTIES
+    IMPORTED_LOCATION "${SDRPlusPlus_SDRPlusPlus_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${SDRPlusPlus_INCLUDE_DIRS}"
+  )
+endif()
+
+if(SDRPlusPlus_IMGUI_LIBRARY AND NOT TARGET SDRPlusPlus::ImGui)
+  add_library(SDRPlusPlus::ImGui SHARED IMPORTED)
+  set_target_properties(SDRPlusPlus::ImGui PROPERTIES
+    IMPORTED_LOCATION "${SDRPlusPlus_IMGUI_LIBRARY}"
+  )
+endif()
+
+# Provide compatibility variables
+set(SDRPlusPlus_LIBRARIES SDRPlusPlus::SDRPlusPlus)
+set(SDRPlusPlus_DEFINITIONS "")
+
+# Module install directory
+set(SDRPlusPlus_PLUGIN_INSTALL_DIR "modules" CACHE PATH "SDR++ plugin install directory")
+
+message(STATUS "Found SDR++ (portable): ${SDRPlusPlus_VERSION}")
+message(STATUS "SDR++ include dirs: ${SDRPlusPlus_INCLUDE_DIRS}")
+message(STATUS "SDR++ library dirs: ${SDRPlusPlus_LIBRARY_DIRS}")
+EOF
+
+          echo "=== Created SDRPlusPlusConfig.cmake ==="
+          cat "$SDRPP_ROOT/lib/cmake/SDRPlusPlus/SDRPlusPlusConfig.cmake"
+
+          echo "SDRPP_CORE_ROOT=$SDRPP_ROOT" >> $GITHUB_ENV
 
       # =========================================================================
       # Configure and build plugin
