@@ -57,15 +57,76 @@ jobs:
           brew update
           brew install cmake ninja protobuf cryptopp absl fmt spdlog nlohmann-json volk liquid-dsp pkg-config git
 
-      - name: Clone SDR++ (for CMake config)
+      - name: Download SDR++ portable (Windows)
+        if: runner.os == 'Windows'
         run: |
-          git clone --depth 1 --branch master https://github.com/AlexandreRouma/SDRPlusPlus.git sdrpp_src
-          cd sdrpp_src
-          mkdir build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_GUI=OFF -DBUILD_SERVER=OFF -DBUILD_PLUGINS=OFF
-          cmake --build . --config Release --parallel 4
-          cd ../..
-          echo "SDRPP_CORE_ROOT=$(pwd)/sdrpp_src/build" >> $GITHUB_ENV
+          # Get latest release asset URL for Windows portable
+          ASSET_URL=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest \
+            | grep "browser_download_url" \
+            | grep -i "portable" \
+            | grep -i "win" \
+            | head -1 \
+            | cut -d '"' -f 4)
+          echo "Downloading SDR++ from: $ASSET_URL"
+          curl -L -o sdrpp_portable.zip "$ASSET_URL"
+          7z x sdrpp_portable.zip -osdrpp_install
+          # Find the extracted folder (usually SDRPlusPlus-*)
+          SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d -name "SDRPlusPlus*" | head -1)
+          echo "SDRPP_CORE_ROOT=$(pwd)/$SDRPP_DIR" >> $GITHUB_ENV
+          echo "SDR++ extracted to: $(pwd)/$SDRPP_DIR"
+          ls -la "$(pwd)/$SDRPP_DIR"
+
+      - name: Download SDR++ portable (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          # Get latest release asset URL for Linux (AppImage or tar.gz)
+          ASSET_URL=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest \
+            | grep "browser_download_url" \
+            | grep -i "linux" \
+            | grep -v "AppImage" \
+            | head -1 \
+            | cut -d '"' -f 4)
+          if [ -z "$ASSET_URL" ]; then
+            # Fallback to AppImage
+            ASSET_URL=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest \
+              | grep "browser_download_url" \
+              | grep -i "appimage" \
+              | head -1 \
+              | cut -d '"' -f 4)
+          fi
+          echo "Downloading SDR++ from: $ASSET_URL"
+          curl -L -o sdrpp_linux.tar.gz "$ASSET_URL"
+          mkdir -p sdrpp_install
+          tar -xzf sdrpp_linux.tar.gz -C sdrpp_install
+          SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d -name "SDRPlusPlus*" | head -1)
+          if [ -z "$SDRPP_DIR" ]; then
+            SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d | grep -v "^sdrpp_install$" | head -1)
+          fi
+          echo "SDRPP_CORE_ROOT=$(pwd)/$SDRPP_DIR" >> $GITHUB_ENV
+          echo "SDR++ extracted to: $(pwd)/$SDRPP_DIR"
+          ls -la "$(pwd)/$SDRPP_DIR"
+
+      - name: Download SDR++ portable (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # Get latest release asset URL for macOS
+          ASSET_URL=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest \
+            | grep "browser_download_url" \
+            | grep -i "macos\|darwin\|osx" \
+            | head -1 \
+            | cut -d '"' -f 4)
+          echo "Downloading SDR++ from: $ASSET_URL"
+          curl -L -o sdrpp_macos.dmg "$ASSET_URL"
+          # DMG mounting on GitHub Actions macOS
+          hdiutil attach sdrpp_macos.dmg -mountpoint /Volumes/SDRPP
+          # Copy to local folder
+          cp -R /Volumes/SDRPP/SDRPlusPlus*.app sdrpp_install/
+          hdiutil detach /Volumes/SDRPP
+          SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d -name "SDRPlusPlus*" | head -1)
+          # For macOS app bundle, CMake config is in Contents/Frameworks or similar
+          echo "SDRPP_CORE_ROOT=$(pwd)/$SDRPP_DIR" >> $GITHUB_ENV
+          echo "SDR++ extracted to: $(pwd)/$SDRPP_DIR"
+          ls -la "$(pwd)/$SDRPP_DIR"
 
       - name: Configure CMake
         run: |
