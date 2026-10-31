@@ -1,0 +1,15 @@
+{
+  "name": "meshtastic-sdrpp-plugin",
+  "version": "1.0.0",
+  "dependencies": [
+    "protobuf",
+    "cryptopp",
+    "liquid-dsp",
+    "volk",
+    "abseil",
+    "fmt",
+    "spdlog",
+    "nlohmann-json"
+  ],
+  "builtin-baseline": "2024-01-15"
+}

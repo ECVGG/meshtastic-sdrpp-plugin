@@ -31,13 +31,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup vcpkg (Windows)
-        if: runner.os == 'Windows'
+      - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgDirectory: 'C:/vcpkg'
-          vcpkgGitCommitId: 'd87e3c3c2f1c6f1c4e8c5c8e2c5b8f3c5c8e2c5b8'
-          vcpkgArguments: 'protobuf cryptopp absl fmt spdlog nlohmann-json volk liquid-dsp'
+          vcpkgJsonGlob: 'vcpkg.json'
           runVcpkgInstall: true
 
       - name: Install dependencies (Linux)
