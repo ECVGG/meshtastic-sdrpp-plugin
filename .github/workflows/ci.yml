@@ -66,6 +66,10 @@ jobs:
           set -x
 
           echo "=== Installing vcpkg ==="
+          if [ -d "C:/vcpkg" ]; then
+            echo "vcpkg directory exists, removing..."
+            rm -rf C:/vcpkg
+          fi
           git clone --depth 1 https://github.com/microsoft/vcpkg.git C:/vcpkg
           cd C:/vcpkg
           ./bootstrap-vcpkg.bat
