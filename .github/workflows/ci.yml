@@ -36,7 +36,7 @@ jobs:
         with:
           vcpkgDirectory: 'C:/vcpkg'
           vcpkgJsonGlob: 'vcpkg.json'
-          vcpkgGitCommitId: 'd87e3c3c2f1c6f1c4e8c5c8e2c5b8f3c5c8e2c5b8'
+          vcpkgGitCommitId: 'd186940b2f0c4e8e5b4ff804af57d2a26fbfa091'
           runVcpkgInstall: true
 
       - name: Install dependencies (Linux)
