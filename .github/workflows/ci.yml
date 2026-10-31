@@ -57,160 +57,90 @@ jobs:
           brew update
           brew install cmake ninja protobuf cryptopp absl fmt spdlog nlohmann-json volk liquid-dsp pkg-config git
 
-      - name: Download SDR++ portable (Windows)
+      - name: Build SDR++ from source (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: |
           set -eu
           set -x
 
-          echo "=== Fetching latest SDR++ release info ==="
-          RELEASE_JSON=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest)
-          echo "$RELEASE_JSON" | grep "browser_download_url" | head -20
+          echo "=== Cloning SDR++ repository ==="
+          git clone --depth 1 --branch master https://github.com/AlexandreRouma/SDRPlusPlus.git sdrpp_src
 
-          echo "=== Finding Windows asset with jq (robust) ==="
-          # Use jq to parse JSON and find the Windows x64 zip asset
-          ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("sdrpp_windows_x64\\.zip$")) | .browser_download_url' | head -1)
+          echo "=== Building SDR++ with vcpkg toolchain ==="
+          cd sdrpp_src
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_INSTALL_PREFIX=$(pwd)/../install
+          cmake --build . --config Release --parallel 4
+          cmake --install .
 
-          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
-            echo "Primary pattern failed, trying fallback..."
-            ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("windows.*x64.*\\.zip$")) | .browser_download_url' | head -1)
-          fi
+          echo "=== SDR++ built and installed to: $(pwd)/../install ==="
+          ls -la $(pwd)/../install
 
-          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
-            echo "Fallback failed, trying any .zip with windows..."
-            ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("windows.*\\.zip$")) | .browser_download_url' | head -1)
-          fi
+          # Find CMake config
+          find $(pwd)/../install -name "SDRPlusPlusConfig.cmake" -o -name "SDRPlusPlus*.cmake" | head -5
 
-          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
-            echo "ERROR: No Windows asset found in release"
-            echo "$RELEASE_JSON" | jq -r '.assets[].name'
-            exit 1
-          fi
+          echo "SDRPP_CORE_ROOT=$(pwd)/../install" >> $GITHUB_ENV
 
-          echo "=== Downloading SDR++ from: $ASSET_URL ==="
-          curl -L -o sdrpp_windows.zip "$ASSET_URL"
-
-          echo "=== Verifying download ==="
-          ls -la sdrpp_windows.zip
-          file sdrpp_windows.zip
-
-          echo "=== Checking for 7z ==="
-          which 7z || which 7za || which 7zr || (echo "7z not found!" && exit 1)
-
-          echo "=== Extracting ==="
-          7z x sdrpp_windows.zip -osdrpp_install
-
-          echo "=== Finding extracted directory ==="
-          find sdrpp_install -maxdepth 1 -type d
-          SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d -name "*SDRPlusPlus*" -o -name "*sdrpp*" | head -1)
-
-          if [ -z "$SDRPP_DIR" ]; then
-            echo "No SDRPlusPlus* dir found, trying any subdir..."
-            SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d | grep -v "^sdrpp_install$" | head -1)
-          fi
-
-          if [ -z "$SDRPP_DIR" ]; then
-            echo "ERROR: Could not find extracted SDR++ directory"
-            exit 1
-          fi
-
-          echo "SDRPP_CORE_ROOT=$(pwd)/$SDRPP_DIR" >> $GITHUB_ENV
-          echo "=== SDR++ extracted to: $(pwd)/$SDRPP_DIR ==="
-          ls -la "$(pwd)/$SDRPP_DIR"
-
-          echo "=== Verifying CMake config exists ==="
-          find "$(pwd)/$SDRPP_DIR" -name "SDRPlusPlusConfig.cmake" -o -name "SDRPlusPlus*.cmake" | head -5
-
-      - name: Download SDR++ portable (Linux)
+      - name: Build SDR++ from source (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -eu
           set -x
 
-          echo "=== Fetching latest SDR++ release info ==="
-          RELEASE_JSON=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest)
+          echo "=== Cloning SDR++ repository ==="
+          git clone --depth 1 --branch master https://github.com/AlexandreRouma/SDRPlusPlus.git sdrpp_src
 
-          echo "=== Finding Linux asset with jq ==="
-          # Try .tar.gz first (not .deb, not AppImage)
-          ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("linux.*(amd64|x86_64).*\\.tar\\.gz$")) | .browser_download_url' | head -1)
+          echo "=== Building SDR++ ==="
+          cd sdrpp_src
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$(pwd)/../install
+          cmake --build . --config Release --parallel 4
+          cmake --install .
 
-          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
-            echo "Trying any linux .tar.gz..."
-            ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("linux.*\\.tar\\.gz$")) | .browser_download_url' | head -1)
-          fi
+          echo "=== SDR++ built and installed to: $(pwd)/../install ==="
+          ls -la $(pwd)/../install
 
-          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
-            echo "Trying AppImage fallback..."
-            ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test(".*\\.AppImage$")) | .browser_download_url' | head -1)
-          fi
+          # Find CMake config
+          find $(pwd)/../install -name "SDRPlusPlusConfig.cmake" -o -name "SDRPlusPlus*.cmake" | head -5
 
-          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
-            echo "ERROR: No Linux asset found in release"
-            echo "$RELEASE_JSON" | jq -r '.assets[].name'
-            exit 1
-          fi
+          echo "SDRPP_CORE_ROOT=$(pwd)/../install" >> $GITHUB_ENV
 
-          echo "=== Downloading SDR++ from: $ASSET_URL ==="
-          curl -L -o sdrpp_linux.tar.gz "$ASSET_URL"
-          mkdir -p sdrpp_install
-          tar -xzf sdrpp_linux.tar.gz -C sdrpp_install
-          SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d -name "*SDRPlusPlus*" -o -name "*sdrpp*" | head -1)
-          if [ -z "$SDRPP_DIR" ]; then
-            SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d | grep -v "^sdrpp_install$" | head -1)
-          fi
-          echo "SDRPP_CORE_ROOT=$(pwd)/$SDRPP_DIR" >> $GITHUB_ENV
-          echo "=== SDR++ extracted to: $(pwd)/$SDRPP_DIR ==="
-          ls -la "$(pwd)/$SDRPP_DIR"
-
-      - name: Download SDR++ portable (macOS)
+      - name: Build SDR++ from source (macOS)
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -eu
           set -x
 
-          echo "=== Fetching latest SDR++ release info ==="
-          RELEASE_JSON=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest)
+          echo "=== Cloning SDR++ repository ==="
+          git clone --depth 1 --branch master https://github.com/AlexandreRouma/SDRPlusPlus.git sdrpp_src
 
-          echo "=== Finding macOS asset with jq ==="
-          # Try .zip first (not .dmg - harder to automate)
-          ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("macos.*(arm|intel|universal).*\\.zip$")) | .browser_download_url' | head -1)
+          echo "=== Building SDR++ ==="
+          cd sdrpp_src
+          mkdir -p build
+          cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$(pwd)/../install
+          cmake --build . --config Release --parallel 4
+          cmake --install .
 
-          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
-            echo "Trying any macos .zip..."
-            ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("macos.*\\.zip$")) | .browser_download_url' | head -1)
-          fi
+          echo "=== SDR++ built and installed to: $(pwd)/../install ==="
+          ls -la $(pwd)/../install
 
-          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
-            echo "Trying dmg fallback..."
-            ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test(".*\\.dmg$")) | .browser_download_url' | head -1)
-          fi
+          # Find CMake config
+          find $(pwd)/../install -name "SDRPlusPlusConfig.cmake" -o -name "SDRPlusPlus*.cmake" | head -5
 
-          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
-            echo "ERROR: No macOS asset found in release"
-            echo "$RELEASE_JSON" | jq -r '.assets[].name'
-            exit 1
-          fi
-
-          echo "=== Downloading SDR++ from: $ASSET_URL ==="
-          if [[ "$ASSET_URL" == *.dmg ]]; then
-            curl -L -o sdrpp_macos.dmg "$ASSET_URL"
-            hdiutil attach sdrpp_macos.dmg -mountpoint /Volumes/SDRPP
-            mkdir -p sdrpp_install
-            cp -R /Volumes/SDRPP/SDRPlusPlus*.app sdrpp_install/
-            hdiutil detach /Volumes/SDRPP
-          else
-            curl -L -o sdrpp_macos.zip "$ASSET_URL"
-            mkdir -p sdrpp_install
-            unzip -q sdrpp_macos.zip -d sdrpp_install
-          fi
-
-          SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d -name "*SDRPlusPlus*" -o -name "*sdrpp*" | head -1)
-          echo "SDRPP_CORE_ROOT=$(pwd)/$SDRPP_DIR" >> $GITHUB_ENV
-          echo "=== SDR++ extracted to: $(pwd)/$SDRPP_DIR ==="
-          ls -la "$(pwd)/$SDRPP_DIR"
+          echo "SDRPP_CORE_ROOT=$(pwd)/../install" >> $GITHUB_ENV
 
       - name: Configure CMake
         shell: bash
@@ -219,7 +149,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DSDRPP_CORE_ROOT="$SDRPP_CORE_ROOT" \
             -DCMAKE_INSTALL_PREFIX=./install \
-            -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
 
       - name: Build
         shell: bash
