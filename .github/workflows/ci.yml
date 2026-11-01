@@ -32,7 +32,7 @@ jobs:
           submodules: recursive
 
       # =========================================================================
-      # LINUX: System packages only, no vcpkg
+      # LINUX: System packages + build liquid-dsp from source
       # =========================================================================
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
@@ -43,17 +43,44 @@ jobs:
             libprotobuf-dev protobuf-compiler \
             libcryptopp-dev \
             libabsl-dev libfmt-dev libspdlog-dev nlohmann-json3-dev \
-            libvolk-dev libliquid-dsp-dev \
+            libvolk-dev \
             pkg-config git
 
+      - name: Build liquid-dsp from source (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          cd /tmp
+          git clone --depth 1 --branch v1.3.2 https://github.com/jgaeddert/liquid-dsp.git
+          cd liquid-dsp
+          ./bootstrap.sh
+          ./configure --prefix=/usr/local
+          make -j4
+          sudo make install
+          sudo ldconfig
+
       # =========================================================================
-      # MACOS: System packages only, no vcpkg (fix: absl → abseil)
+      # MACOS: System packages only + build liquid-dsp from source
       # =========================================================================
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install cmake ninja protobuf cryptopp abseil fmt spdlog nlohmann-json volk liquid-dsp pkg-config git
+          brew install cmake ninja protobuf cryptopp abseil fmt spdlog nlohmann-json volk pkg-config git
+
+      - name: Build liquid-dsp from source (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -eu
+          cd /tmp
+          git clone --depth 1 --branch v1.3.2 https://github.com/jgaeddert/liquid-dsp.git
+          cd liquid-dsp
+          ./bootstrap.sh
+          ./configure --prefix=/usr/local
+          make -j4
+          sudo make install
 
       # =========================================================================
       # WINDOWS: Install vcpkg with caching and binary packages for speed
@@ -93,21 +120,16 @@ jobs:
             cd C:/vcpkg
           fi
 
-          echo "=== Installing plugin dependencies via vcpkg ==="
+          echo "=== Installing plugin dependencies via vcpkg (using manifest) ==="
           # Use $RUNNER_TEMP (set by GitHub Actions) for binary cache path
           # Convert Windows path to Unix-style for bash
           VCPKG_BINARY_CACHE="${RUNNER_TEMP//\\//}/vcpkg-binaries"
           mkdir -p "$VCPKG_BINARY_CACHE"
           ./vcpkg install \
-            protobuf \
-            cryptopp \
-            abseil \
-            fmt \
-            spdlog \
-            nlohmann-json \
             --triplet x64-windows \
             --binarysource=clear;files,"$VCPKG_BINARY_CACHE",readwrite \
-            --x-wait-for-lock
+            --x-wait-for-lock \
+            --feature-flags=manifests
 
           echo "VCPKG_ROOT=C:/vcpkg" >> $GITHUB_ENV
 
@@ -121,52 +143,271 @@ jobs:
           set -eu
           set -x
 
-          echo "=== Cloning SDR++ repository ==="
-          git clone --depth 1 --branch master https://github.com/AlexandreRouma/SDRPlusPlus.git sdrpp_src
+          # Use fixed URL for nightly release to avoid API rate limits
+          ASSET_URL="https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/sdrpp_linux_x64.tar.gz"
 
-          echo "=== Building SDR++ (system packages) ==="
-          cd sdrpp_src
-          mkdir -p build
-          cd build
-          cmake .. \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$(pwd)/../install
-          cmake --build . --config Release --parallel 4
-          cmake --install .
+          echo "=== Downloading SDR++ from: $ASSET_URL ==="
+          curl -L -o sdrpp_linux.tar.gz "$ASSET_URL"
 
-          echo "=== SDR++ built and installed to: $(pwd)/../install ==="
-          ls -la $(pwd)/../install
+          echo "=== Extracting ==="
+          tar -xzf sdrpp_linux.tar.gz -C sdrpp_install
 
-          find $(pwd)/../install -name "SDRPlusPlusConfig.cmake" -o -name "SDRPlusPlus*.cmake" | head -5
+          echo "=== Finding extracted directory ==="
+          find sdrpp_install -maxdepth 1 -type d
+          # First, try to find the actual SDR++ subdirectory (exclude parent sdrpp_install)
+          SDRPP_DIR=$(find sdrpp_install -mindepth 1 -maxdepth 1 -type d \( -name "*SDRPlusPlus*" -o -name "*sdrpp*" \) | head -1)
 
-          echo "SDRPP_CORE_ROOT=$(pwd)/../install" >> $GITHUB_ENV
+          if [ -z "$SDRPP_DIR" ]; then
+            # Fallback: any subdirectory of sdrpp_install that's not the parent itself
+            SDRPP_DIR=$(find sdrpp_install -mindepth 1 -maxdepth 1 -type d | head -1)
+          fi
 
-      - name: Build SDR++ from source (macOS)
+          if [ -z "$SDRPP_DIR" ]; then
+            echo "ERROR: Could not find extracted SDR++ directory"
+            exit 1
+          fi
+
+          SDRPP_ROOT=$(pwd)/$SDRPP_DIR
+          echo "SDR++ extracted to: $SDRPP_ROOT"
+          ls -la "$SDRPP_ROOT"
+
+          echo "=== Creating minimal SDRPlusPlusConfig.cmake ==="
+          mkdir -p "$SDRPP_ROOT/lib/cmake/SDRPlusPlus"
+
+          # Debug: list the portable release structure
+          echo "=== Portable release structure ==="
+          find "$SDRPP_ROOT" -type f -name "*.h" | head -20
+          ls -la "$SDRPP_ROOT"
+
+          # Find include directory - portable release has include/ or Include/ at root
+          INCLUDE_DIR=""
+          if [ -d "$SDRPP_ROOT/include" ]; then
+            INCLUDE_DIR="$SDRPP_ROOT/include"
+          elif [ -d "$SDRPP_ROOT/Include" ]; then
+            INCLUDE_DIR="$SDRPP_ROOT/Include"
+          else
+            # Fallback: search for any .h files
+            INCLUDE_DIR=$(find "$SDRPP_ROOT" -name "*.h" -type f | head -1 | xargs dirname 2>/dev/null || echo "")
+          fi
+          # Only set INCLUDE_DIR if it actually exists
+          if [ -n "$INCLUDE_DIR" ] && [ ! -d "$INCLUDE_DIR" ]; then
+            INCLUDE_DIR=""
+          fi
+
+          # Find lib directory - portable release has .so files at root or in lib/
+          LIB_DIR=""
+          if [ -d "$SDRPP_ROOT/lib" ]; then
+            LIB_DIR="$SDRPP_ROOT/lib"
+          elif [ -d "$SDRPP_ROOT/bin" ]; then
+            LIB_DIR="$SDRPP_ROOT/bin"
+          else
+            # Fallback: search for .so files
+            LIB_DIR=$(find "$SDRPP_ROOT" -name "*.so" | head -1 | xargs dirname 2>/dev/null || echo "")
+          fi
+          if [ -z "$LIB_DIR" ]; then
+            LIB_DIR="$SDRPP_ROOT"
+          fi
+
+          echo "INCLUDE_DIR: $INCLUDE_DIR"
+          echo "LIB_DIR: $LIB_DIR"
+
+          # Write CMake config using echo (avoids heredoc/YAML issues)
+          CFG="$SDRPP_ROOT/lib/cmake/SDRPlusPlus/SDRPlusPlusConfig.cmake"
+          echo '# Minimal SDR++ config for plugin development' > "$CFG"
+          echo '# Generated from portable release - no separate libraries, use INTERFACE target' >> "$CFG"
+          echo '' >> "$CFG"
+          echo 'set(SDRPlusPlus_VERSION "1.0.0")' >> "$CFG"
+
+          if [ -n "$INCLUDE_DIR" ]; then
+            # Compute relative path from config location to include dir
+            REL_INCLUDE="${CMAKE_CURRENT_LIST_DIR}/../../../include"
+            echo "set(SDRPlusPlus_INCLUDE_DIRS \"${REL_INCLUDE}\")" >> "$CFG"
+          else
+            echo "# No include directory found in portable release" >> "$CFG"
+            echo "set(SDRPlusPlus_INCLUDE_DIRS \"\")" >> "$CFG"
+          fi
+          echo '' >> "$CFG"
+          echo '# Create INTERFACE target for SDR++ core (portable release has no separate library)' >> "$CFG"
+          echo 'if(NOT TARGET SDRPlusPlus::SDRPlusPlus)' >> "$CFG"
+          echo '  add_library(SDRPlusPlus::SDRPlusPlus INTERFACE IMPORTED)' >> "$CFG"
+          if [ -n "$INCLUDE_DIR" ]; then
+            echo '  set_target_properties(SDRPlusPlus::SDRPlusPlus PROPERTIES' >> "$CFG"
+            echo '    INTERFACE_INCLUDE_DIRECTORIES "${SDRPlusPlus_INCLUDE_DIRS}"' >> "$CFG"
+            echo '  )' >> "$CFG"
+          fi
+          echo 'endif()' >> "$CFG"
+          echo '' >> "$CFG"
+          echo '# ImGui is typically bundled with SDR++ - try to find it' >> "$CFG"
+          echo 'find_library(SDRPlusPlus_IMGUI_LIBRARY' >> "$CFG"
+          echo '  NAMES imgui' >> "$CFG"
+          echo '  PATHS "${CMAKE_CURRENT_LIST_DIR}/../../../" "${CMAKE_CURRENT_LIST_DIR}/../../../lib" "${CMAKE_CURRENT_LIST_DIR}/../../../bin"' >> "$CFG"
+          echo '  NO_DEFAULT_PATH' >> "$CFG"
+          echo ')' >> "$CFG"
+          echo '' >> "$CFG"
+          echo 'if(SDRPlusPlus_IMGUI_LIBRARY AND NOT TARGET SDRPlusPlus::ImGui)' >> "$CFG"
+          echo '  add_library(SDRPlusPlus::ImGui SHARED IMPORTED)' >> "$CFG"
+          echo '  set_target_properties(SDRPlusPlus::ImGui PROPERTIES' >> "$CFG"
+          echo '    IMPORTED_LOCATION "${SDRPlusPlus_IMGUI_LIBRARY}"' >> "$CFG"
+          echo '  )' >> "$CFG"
+          echo 'else()' >> "$CFG"
+          echo '  # Create INTERFACE target for ImGui if not found' >> "$CFG"
+          echo '  if(NOT TARGET SDRPlusPlus::ImGui)' >> "$CFG"
+          echo '    add_library(SDRPlusPlus::ImGui INTERFACE IMPORTED)' >> "$CFG"
+          echo '  endif()' >> "$CFG"
+          echo 'endif()' >> "$CFG"
+          echo '' >> "$CFG"
+          echo '# Provide compatibility variables' >> "$CFG"
+          echo 'set(SDRPlusPlus_LIBRARIES SDRPlusPlus::SDRPlusPlus)' >> "$CFG"
+          echo 'set(SDRPlusPlus_DEFINITIONS "")' >> "$CFG"
+          echo '' >> "$CFG"
+          echo '# Module install directory' >> "$CFG"
+          echo 'set(SDRPlusPlus_PLUGIN_INSTALL_DIR "modules" CACHE PATH "SDR++ plugin install directory")' >> "$CFG"
+          echo '' >> "$CFG"
+          echo 'message(STATUS "Found SDR++ (portable): ${SDRPlusPlus_VERSION}")' >> "$CFG"
+          echo 'message(STATUS "SDR++ include dirs: ${SDRPlusPlus_INCLUDE_DIRS}")' >> "$CFG"
+
+          echo "=== Created SDRPlusPlusConfig.cmake ==="
+          cat "$SDRPP_ROOT/lib/cmake/SDRPlusPlus/SDRPlusPlusConfig.cmake"
+
+          echo "SDRPP_CORE_ROOT=$SDRPP_ROOT" >> $GITHUB_ENV
+
+      # =========================================================================
+      # MACOS: Use portable SDR++ release + generate minimal CMake config
+      # =========================================================================
+      - name: Setup SDR++ portable (macOS)
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -eu
           set -x
 
-          echo "=== Cloning SDR++ repository ==="
-          git clone --depth 1 --branch master https://github.com/AlexandreRouma/SDRPlusPlus.git sdrpp_src
+          # Use fixed URL for nightly release to avoid API rate limits
+          ASSET_URL="https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/sdrpp_macos_x64.zip"
 
-          echo "=== Building SDR++ (system packages) ==="
-          cd sdrpp_src
-          mkdir -p build
-          cd build
-          cmake .. \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$(pwd)/../install
-          cmake --build . --config Release --parallel 4
-          cmake --install .
+          echo "=== Downloading SDR++ from: $ASSET_URL ==="
+          curl -L -o sdrpp_macos.zip "$ASSET_URL"
 
-          echo "=== SDR++ built and installed to: $(pwd)/../install ==="
-          ls -la $(pwd)/../install
+          echo "=== Extracting ==="
+          unzip -q sdrpp_macos.zip -d sdrpp_install
 
-          find $(pwd)/../install -name "SDRPlusPlusConfig.cmake" -o -name "SDRPlusPlus*.cmake" | head -5
+          echo "=== Finding extracted directory ==="
+          find sdrpp_install -maxdepth 1 -type d
+          # First, try to find the actual SDR++ subdirectory (exclude parent sdrpp_install)
+          SDRPP_DIR=$(find sdrpp_install -mindepth 1 -maxdepth 1 -type d \( -name "*SDRPlusPlus*" -o -name "*sdrpp*" \) | head -1)
 
-          echo "SDRPP_CORE_ROOT=$(pwd)/../install" >> $GITHUB_ENV
+          if [ -z "$SDRPP_DIR" ]; then
+            # Fallback: any subdirectory of sdrpp_install that's not the parent itself
+            SDRPP_DIR=$(find sdrpp_install -mindepth 1 -maxdepth 1 -type d | head -1)
+          fi
+
+          if [ -z "$SDRPP_DIR" ]; then
+            echo "ERROR: Could not find extracted SDR++ directory"
+            exit 1
+          fi
+
+          SDRPP_ROOT=$(pwd)/$SDRPP_DIR
+          echo "SDR++ extracted to: $SDRPP_ROOT"
+          ls -la "$SDRPP_ROOT"
+
+          echo "=== Creating minimal SDRPlusPlusConfig.cmake ==="
+          mkdir -p "$SDRPP_ROOT/lib/cmake/SDRPlusPlus"
+
+          # Debug: list the portable release structure
+          echo "=== Portable release structure ==="
+          find "$SDRPP_ROOT" -type f -name "*.h" | head -20
+          ls -la "$SDRPP_ROOT"
+
+          # Find include directory - portable release has include/ or Include/ at root
+          INCLUDE_DIR=""
+          if [ -d "$SDRPP_ROOT/include" ]; then
+            INCLUDE_DIR="$SDRPP_ROOT/include"
+          elif [ -d "$SDRPP_ROOT/Include" ]; then
+            INCLUDE_DIR="$SDRPP_ROOT/Include"
+          else
+            # Fallback: search for any .h files
+            INCLUDE_DIR=$(find "$SDRPP_ROOT" -name "*.h" -type f | head -1 | xargs dirname 2>/dev/null || echo "")
+          fi
+          # Only set INCLUDE_DIR if it actually exists
+          if [ -n "$INCLUDE_DIR" ] && [ ! -d "$INCLUDE_DIR" ]; then
+            INCLUDE_DIR=""
+          fi
+
+          # Find lib directory - portable release has .lib/.dll at root or in lib/
+          LIB_DIR=""
+          if [ -d "$SDRPP_ROOT/lib" ]; then
+            LIB_DIR="$SDRPP_ROOT/lib"
+          elif [ -d "$SDRPP_ROOT/bin" ]; then
+            LIB_DIR="$SDRPP_ROOT/bin"
+          else
+            # Fallback: search for .dylib files
+            LIB_DIR=$(find "$SDRPP_ROOT" -name "*.dylib" | head -1 | xargs dirname 2>/dev/null || echo "")
+          fi
+          if [ -z "$LIB_DIR" ]; then
+            LIB_DIR="$SDRPP_ROOT"
+          fi
+
+          echo "INCLUDE_DIR: $INCLUDE_DIR"
+          echo "LIB_DIR: $LIB_DIR"
+
+          # Write CMake config using echo (avoids heredoc/YAML issues)
+          CFG="$SDRPP_ROOT/lib/cmake/SDRPlusPlus/SDRPlusPlusConfig.cmake"
+          echo '# Minimal SDR++ config for plugin development' > "$CFG"
+          echo '# Generated from portable release - no separate libraries, use INTERFACE target' >> "$CFG"
+          echo '' >> "$CFG"
+          echo 'set(SDRPlusPlus_VERSION "1.0.0")' >> "$CFG"
+
+          if [ -n "$INCLUDE_DIR" ]; then
+            # Compute relative path from config location to include dir
+            REL_INCLUDE="${CMAKE_CURRENT_LIST_DIR}/../../../include"
+            echo "set(SDRPlusPlus_INCLUDE_DIRS \"${REL_INCLUDE}\")" >> "$CFG"
+          else
+            echo "# No include directory found in portable release" >> "$CFG"
+            echo "set(SDRPlusPlus_INCLUDE_DIRS \"\")" >> "$CFG"
+          fi
+          echo '' >> "$CFG"
+          echo '# Create INTERFACE target for SDR++ core (portable release has no separate library)' >> "$CFG"
+          echo 'if(NOT TARGET SDRPlusPlus::SDRPlusPlus)' >> "$CFG"
+          echo '  add_library(SDRPlusPlus::SDRPlusPlus INTERFACE IMPORTED)' >> "$CFG"
+          if [ -n "$INCLUDE_DIR" ]; then
+            echo '  set_target_properties(SDRPlusPlus::SDRPlusPlus PROPERTIES' >> "$CFG"
+            echo '    INTERFACE_INCLUDE_DIRECTORIES "${SDRPlusPlus_INCLUDE_DIRS}"' >> "$CFG"
+            echo '  )' >> "$CFG"
+          fi
+          echo 'endif()' >> "$CFG"
+          echo '' >> "$CFG"
+          echo '# ImGui is typically bundled with SDR++ - try to find it' >> "$CFG"
+          echo 'find_library(SDRPlusPlus_IMGUI_LIBRARY' >> "$CFG"
+          echo '  NAMES imgui' >> "$CFG"
+          echo '  PATHS "${CMAKE_CURRENT_LIST_DIR}/../../../" "${CMAKE_CURRENT_LIST_DIR}/../../../lib" "${CMAKE_CURRENT_LIST_DIR}/../../../bin"' >> "$CFG"
+          echo '  NO_DEFAULT_PATH' >> "$CFG"
+          echo ')' >> "$CFG"
+          echo '' >> "$CFG"
+          echo 'if(SDRPlusPlus_IMGUI_LIBRARY AND NOT TARGET SDRPlusPlus::ImGui)' >> "$CFG"
+          echo '  add_library(SDRPlusPlus::ImGui SHARED IMPORTED)' >> "$CFG"
+          echo '  set_target_properties(SDRPlusPlus::ImGui PROPERTIES' >> "$CFG"
+          echo '    IMPORTED_LOCATION "${SDRPlusPlus_IMGUI_LIBRARY}"' >> "$CFG"
+          echo '  )' >> "$CFG"
+          echo 'else()' >> "$CFG"
+          echo '  # Create INTERFACE target for ImGui if not found' >> "$CFG"
+          echo '  if(NOT TARGET SDRPlusPlus::ImGui)' >> "$CFG"
+          echo '    add_library(SDRPlusPlus::ImGui INTERFACE IMPORTED)' >> "$CFG"
+          echo '  endif()' >> "$CFG"
+          echo 'endif()' >> "$CFG"
+          echo '' >> "$CFG"
+          echo '# Provide compatibility variables' >> "$CFG"
+          echo 'set(SDRPlusPlus_LIBRARIES SDRPlusPlus::SDRPlusPlus)' >> "$CFG"
+          echo 'set(SDRPlusPlus_DEFINITIONS "")' >> "$CFG"
+          echo '' >> "$CFG"
+          echo '# Module install directory' >> "$CFG"
+          echo 'set(SDRPlusPlus_PLUGIN_INSTALL_DIR "modules" CACHE PATH "SDR++ plugin install directory")' >> "$CFG"
+          echo '' >> "$CFG"
+          echo 'message(STATUS "Found SDR++ (portable): ${SDRPlusPlus_VERSION}")' >> "$CFG"
+          echo 'message(STATUS "SDR++ include dirs: ${SDRPlusPlus_INCLUDE_DIRS}")' >> "$CFG"
+
+          echo "=== Created SDRPlusPlusConfig.cmake ==="
+          cat "$SDRPP_ROOT/lib/cmake/SDRPlusPlus/SDRPlusPlusConfig.cmake"
+
+          echo "SDRPP_CORE_ROOT=$SDRPP_ROOT" >> $GITHUB_ENV
 
       # =========================================================================
       # WINDOWS: Use portable SDR++ release + generate minimal CMake config
