@@ -7,8 +7,11 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#include <ctime>
 
 using nlohmann::json;
+
+namespace MeshtasticDecoder {
 
 MeshtasticDecoder::MeshtasticDecoder() {
     // Initialize LoRa demodulator with default config
@@ -58,6 +61,11 @@ void MeshtasticDecoder::updateChannelKey(int index, const std::string& pskBase64
             channels[index].useAES256 = useAES256;
         }
     }
+}
+
+std::vector<ChannelInfo> MeshtasticDecoder::getChannels() const {
+    std::lock_guard<std::mutex> lock(channelsMutex);
+    return channels;
 }
 
 std::vector<DecodedPacket> MeshtasticDecoder::processIQ(const Complex* iq, size_t count, double sampleRate) {
@@ -128,13 +136,12 @@ bool MeshtasticDecoder::processRawPacketInternal(const std::vector<uint8_t>& raw
         packetsDecrypted++;
     }
 
-    // Extract payload - use a DecodedMeshtasticPacket for extraction
+    // Extract payload
     DecodedMeshtasticPacket decodedProto;
     decodedProto.header = header;
     decodedProto.protoPacket = decoded.protoPacket;
     if (parser.extractPayload(packet, decodedProto)) {
         decoded.decodedText = decodedProto.textMessage;
-        // Copy other fields as needed
     }
 
     // Update node database
@@ -197,7 +204,7 @@ bool MeshtasticDecoder::tryDecryptWithAllChannels(meshtastic::MeshPacket& packet
         meshtastic::MeshPacket testPacket = packet;
         if (decryptor.decrypt(testPacket)) {
             // Verify decryption by checking protobuf structure
-            if (MeshtasticCrypto::verifyDecryption(
+            if (MeshtasticProtocol::MeshtasticCrypto::verifyDecryption(
                     reinterpret_cast<const uint8_t*>(testPacket.payload().data()),
                     testPacket.payload().size())) {
                 packet = std::move(testPacket);
@@ -221,8 +228,8 @@ std::array<uint8_t, 32> MeshtasticDecoder::deriveKeyFromPSK(const std::string& p
     return key;
 }
 
-std::array<uint8_t, 16> MeshtasticDecoder::buildNonce(const meshtastic::MeshPacket& packet) {
-    return MeshtasticDecryptor::buildNonce(packet.id(), packet.from());
+std::array<uint8_t, 12> MeshtasticDecoder::buildNonce(const meshtastic::MeshPacket& packet) {
+    return MeshtasticProtocol::MeshtasticCrypto::buildNonce(packet.id(), packet.from());
 }
 
 void MeshtasticDecoder::handleDecodedPacket(DecodedPacket& packet) {
@@ -248,7 +255,7 @@ void MeshtasticDecoder::updateNodeDatabase(const meshtastic::MeshPacket& packet)
     node.lastSnr = 0;
 
     // Update node info if this is a NODEINFO packet
-    if (packet.portnum() == static_cast<uint32_t>(MSPortNum::NODEINFO_APP) && packet.has_nodeinfo()) {
+    if (packet.portnum() == static_cast<uint32_t>(MeshtasticProtocol::MSPortNum::NODEINFO_APP) && packet.has_nodeinfo()) {
         node.longName = packet.nodeinfo().long_name();
         node.shortName = packet.nodeinfo().short_name();
         node.hwModel = packet.nodeinfo().hw_model();
@@ -256,7 +263,7 @@ void MeshtasticDecoder::updateNodeDatabase(const meshtastic::MeshPacket& packet)
     }
 
     // Update position if available
-    if (packet.portnum() == static_cast<uint32_t>(MSPortNum::POSITION_APP) && packet.has_position()) {
+    if (packet.portnum() == static_cast<uint32_t>(MeshtasticProtocol::MSPortNum::POSITION_APP) && packet.has_position()) {
         node.latitude = packet.position().latitude();
         node.longitude = packet.position().longitude();
         node.altitude = packet.position().altitude();
@@ -335,7 +342,7 @@ void MeshtasticDecoder::displayPacket(DecodedPacket& packet) {
         }
 
         // Generate decoded text
-        if (packet.protoPacket->portnum() == static_cast<uint32_t>(MSPortNum::TEXT_MESSAGE_APP) && packet.protoPacket->has_data()) {
+        if (packet.protoPacket->portnum() == static_cast<uint32_t>(MeshtasticProtocol::MSPortNum::TEXT_MESSAGE_APP) && packet.protoPacket->has_data()) {
             packet.decodedText = packet.protoPacket->data().text();
         } else {
             packet.decodedText = portNumToString(static_cast<uint8_t>(packet.protoPacket->portnum()));
@@ -373,7 +380,7 @@ void MeshtasticDecoder::loadConfig(const nlohmann::json& config) {
         loraConfig.bandwidth = lora.value("bandwidth", 125000);
         loraConfig.codingRate = lora.value("coding_rate", 5);
         loraConfig.preambleLength = lora.value("preamble_length", 8);
-        loraConfig.syncWord = static_cast<uint8_t>(lora.value("sync_word", 0x12));
+        loraConfig.syncWord = static_cast<uint8_t>(lora.value("sync_word", 0x34));
         loraConfig.crcEnabled = lora.value("crc_enabled", true);
         loraConfig.implicitHeader = lora.value("implicit_header", false);
         loraConfig.iqInverted = lora.value("iq_inverted", false);
@@ -441,3 +448,20 @@ const MeshtasticDecoder::NodeInfo* MeshtasticDecoder::getNode(uint32_t id) const
     }
     return nullptr;
 }
+
+std::vector<MeshtasticDecoder::NodeInfo> MeshtasticDecoder::getAllNodes() const {
+    std::lock_guard<std::mutex> lock(nodeDatabaseMutex);
+    std::vector<NodeInfo> result;
+    result.reserve(nodeDatabase.size());
+    for (const auto& pair : nodeDatabase) {
+        result.push_back(pair.second);
+    }
+    return result;
+}
+
+std::deque<DecodedPacket> MeshtasticDecoder::getPacketHistory() const {
+    std::lock_guard<std::mutex> lock(packetHistoryMutex);
+    return packetHistory;
+}
+
+} // namespace MeshtasticDecoder

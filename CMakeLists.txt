@@ -109,7 +109,17 @@ if(nlohmann_json_FOUND)
     message(STATUS "Found nlohmann_json")
     set(HAVE_JSON 1)
 else()
-    set(HAVE_JSON 0)
+    # Try to find manually
+    find_path(NLOHMANN_JSON_INCLUDE_DIR nlohmann/json.hpp
+        PATHS ${CMAKE_INSTALL_PREFIX}/include ${CMAKE_PREFIX_PATH}/include
+        PATH_SUFFIXES nlohmann
+    )
+    if(NLOHMANN_JSON_INCLUDE_DIR)
+        message(STATUS "Found nlohmann_json at: ${NLOHMANN_JSON_INCLUDE_DIR}")
+        set(HAVE_JSON 1)
+    else()
+        set(HAVE_JSON 0)
+    endif()
 endif()
 
 # Threads
@@ -118,11 +128,7 @@ find_package(Threads REQUIRED)
 # =============================================================================
 # Protobuf Code Generation
 # =============================================================================
-# Copy Meshtastic protobuf definitions to build directory for generation
-file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/proto/meshtastic")
-
-# Meshtastic proto files (these would normally come from meshtastic/protobufs repo)
-# For now, we include them directly in the source tree
+# Meshtastic proto files
 set(MESHTASTIC_PROTO_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/mesh.proto"
     "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/telemetry.proto"
@@ -181,7 +187,7 @@ set(PLUGIN_HEADERS
 )
 
 # =============================================================================
-# Create Shared Library
+# Create Shared Library (MODULE for SDR++ plugin)
 # =============================================================================
 add_library(MeshtasticPlugin MODULE ${PLUGIN_SOURCES} ${PLUGIN_HEADERS})
 
@@ -208,10 +214,16 @@ target_include_directories(MeshtasticPlugin PRIVATE
     ${CRYPTOPP_INCLUDE_DIRS}
 )
 
+# Add nlohmann_json include if found manually
+if(HAVE_JSON AND NLOHMANN_JSON_INCLUDE_DIR)
+    target_include_directories(MeshtasticPlugin PRIVATE ${NLOHMANN_JSON_INCLUDE_DIR})
+endif()
+
 # Compile definitions
 target_compile_definitions(MeshtasticPlugin PRIVATE
     MESHTASTIC_PLUGIN_VERSION="${MESHTASTIC_PLUGIN_VERSION}"
     MESHTASTIC_PLUGIN_BUILD_DATE="\"${BUILD_DATE}\""
+    PROTOBUF_USE_DLLS=OFF
 )
 
 # Link libraries - STATIC linking for single-file plugin
@@ -234,7 +246,7 @@ if(HAVE_SPDLOG)
     target_link_libraries(MeshtasticPlugin PRIVATE spdlog::spdlog)
 endif()
 
-if(HAVE_JSON)
+if(HAVE_JSON AND nlohmann_json_FOUND)
     target_link_libraries(MeshtasticPlugin PRIVATE nlohmann_json::nlohmann_json)
 endif()
 

@@ -1,193 +1,92 @@
 #include "MeshtasticProtocol.h"
 #include "mesh.pb.h"
-#include <algorithm>
 #include <cstring>
-#include <sstream>
-#include <iomanip>
 
-using namespace meshtastic;
-
-MeshtasticProtocolParser::MeshtasticProtocolParser() {
-}
-
-MeshtasticProtocolParser::~MeshtasticProtocolParser() {
-}
+namespace MeshtasticProtocol {
 
 bool MeshtasticProtocolParser::parsePacket(const uint8_t* data, size_t len, meshtastic::MeshPacket& packet) {
     if (!data || len == 0) return false;
 
     try {
-        // Parse the protobuf message
         return packet.ParseFromArray(data, static_cast<int>(len));
-    } catch (const std::exception&) {
+    } catch (...) {
         return false;
     }
 }
 
 bool MeshtasticProtocolParser::extractPayload(const meshtastic::MeshPacket& packet, DecodedMeshtasticPacket& decoded) {
-    decoded.protoPacket = std::make_shared<MeshPacket>(packet);
+    // Check port number and extract appropriate payload
+    uint32_t port = packet.portnum();
 
-    // Extract port number
-    MSPortNum port = static_cast<MSPortNum>(packet.portnum());
-
-    // Decode based on port number
-    // Check which field is set in the oneof payload
-    switch (port) {
-        case MSPortNum::TEXT_MESSAGE_APP:
+    switch (static_cast<MSPortNum>(port)) {
+        case MSPortNum::TEXT_MESSAGE_APP: {
             if (packet.has_data()) {
-                return parseDataPayload(packet.data(), decoded);
+                const auto& data = packet.data();
+                if (data.has_text()) {
+                    decoded.textMessage = data.text();
+                }
             }
-            return false;
-        case MSPortNum::POSITION_APP:
+            break;
+        }
+        case MSPortNum::POSITION_APP: {
             if (packet.has_position()) {
-                return parsePositionPayload(packet.position(), decoded);
+                const auto& pos = packet.position();
+                decoded.textMessage = "Position: lat=" + std::to_string(pos.latitude()) +
+                                     " lon=" + std::to_string(pos.longitude()) +
+                                     " alt=" + std::to_string(pos.altitude());
             }
-            return false;
-        case MSPortNum::NODEINFO_APP:
+            break;
+        }
+        case MSPortNum::NODEINFO_APP: {
             if (packet.has_nodeinfo()) {
-                return parseNodeInfoPayload(packet.nodeinfo(), decoded);
+                const auto& info = packet.nodeinfo();
+                decoded.textMessage = "NodeInfo: " + info.long_name() + " (" + info.short_name() + ")";
             }
-            return false;
-        case MSPortNum::TELEMETRY_APP:
+            break;
+        }
+        case MSPortNum::TELEMETRY_APP: {
             if (packet.has_telemetry()) {
-                return parseTelemetryPayload(packet.telemetry(), decoded);
+                decoded.textMessage = "Telemetry data";
             }
-            return false;
-        case MSPortNum::ROUTING_APP:
+            break;
+        }
+        case MSPortNum::ROUTING_APP: {
             if (packet.has_routing()) {
-                return parseRoutingPayload(packet.routing(), decoded);
+                decoded.textMessage = "Routing data";
             }
-            return false;
-        case MSPortNum::ADMIN_APP:
+            break;
+        }
+        case MSPortNum::ADMIN_APP: {
             if (packet.has_admin()) {
-                return parseAdminPayload(packet.admin(), decoded);
+                decoded.textMessage = "Admin message";
             }
-            return false;
-        case MSPortNum::NEIGHBORINFO_APP:
+            break;
+        }
+        case MSPortNum::NEIGHBORINFO_APP: {
             if (packet.has_neighborinfo()) {
-                return parseNeighborInfoPayload(packet.neighborinfo(), decoded);
+                decoded.textMessage = "Neighbor info";
             }
-            return false;
-        case MSPortNum::WAYPOINT_APP:
-            if (packet.has_waypoint()) {
-                return parseWaypointPayload(packet.waypoint(), decoded);
-            }
-            return false;
-        case MSPortNum::AUDIO_APP:
-            if (packet.has_audio()) {
-                return parseAudioPayload(packet.audio(), decoded);
-            }
-            return false;
-        case MSPortNum::DETECTION_SENSOR_APP:
-            if (packet.has_detectionsensor()) {
-                return parseDetectionSensorPayload(packet.detectionsensor(), decoded);
-            }
-            return false;
-        case MSPortNum::REPLY_APP:
-            if (packet.has_reply()) {
-                return parseReplyPayload(packet.reply(), decoded);
-            }
-            return false;
-        case MSPortNum::PAXCOUNTER_APP:
-            if (packet.has_paxcount()) {
-                return parsePaxcountPayload(packet.paxcount(), decoded);
-            }
-            return false;
-        default:
-            decoded.error = "Unknown port number: " + std::to_string(packet.portnum());
-            return false;
-    }
-}
-
-bool MeshtasticProtocolParser::validatePacket(const meshtastic::MeshPacket& packet) {
-    // Basic validation
-    if (packet.from() == 0 && packet.to() != MeshtasticProtocol::BROADCAST_ADDR) {
-        return false;
-    }
-    if (packet.id() == 0) {
-        return false;
-    }
-    if (packet.portnum() > 255) {
-        return false;
-    }
-    return true;
-}
-
-std::unique_ptr<meshtastic::MeshPacket> MeshtasticProtocolParser::createPacket(
-    uint32_t from,
-    uint32_t to,
-    uint32_t id,
-    uint8_t channel,
-    uint8_t hopLimit,
-    MSPortNum portNum,
-    const uint8_t* payload,
-    size_t payloadLen,
-    bool wantAck,
-    bool encrypted) {
-
-    auto packet = std::make_unique<MeshPacket>();
-    packet->set_from(from);
-    packet->set_to(to);
-    packet->set_id(id);
-    packet->set_channel(channel);
-    packet->set_hop_limit(hopLimit);
-    packet->set_hop_start(hopLimit);
-    packet->set_portnum(static_cast<uint32_t>(portNum));
-    packet->set_want_ack(wantAck);
-    packet->set_priority(1);  // Normal priority
-    packet->set_encrypted(encrypted);
-
-    // Set payload based on port
-    // For text messages, we'd need to create a Data message
-    if (portNum == MSPortNum::TEXT_MESSAGE_APP && payload && payloadLen > 0) {
-        Data data;
-        data.set_portnum(static_cast<uint32_t>(portNum));
-        data.set_payload(payload, payloadLen);
-        packet->set_payload(data.SerializeAsString());
-    } else if (payload && payloadLen > 0) {
-        packet->set_payload(std::string(reinterpret_cast<const char*>(payload), payloadLen));
-    }
-
-    return packet;
-}
-
-std::vector<uint8_t> MeshtasticProtocolParser::serializePacket(const meshtastic::MeshPacket& packet) {
-    std::string serialized = packet.SerializeAsString();
-    return std::vector<uint8_t>(serialized.begin(), serialized.end());
-}
-
-uint16_t MeshtasticProtocolParser::calculateCRC(const uint8_t* data, size_t len) {
-    uint16_t crc = 0xFFFF;
-    for (size_t i = 0; i < len; i++) {
-        crc ^= (uint16_t)data[i] << 8;
-        for (int j = 0; j < 8; j++) {
-            if (crc & 0x8000) {
-                crc = (crc << 1) ^ 0x1021;
-            } else {
-                crc <<= 1;
-            }
+            break;
+        }
+        default: {
+            decoded.textMessage = "Port " + std::to_string(port);
+            break;
         }
     }
-    return crc;
-}
 
-bool MeshtasticProtocolParser::verifyCRC(const uint8_t* data, size_t len, uint16_t expectedCRC) {
-    if (!data || len < 2) return false;
-    // CRC is the last 2 bytes
-    if (len < 2) return false;
-    uint16_t calculated = calculateCRC(data, len - 2);
-    return calculated == expectedCRC;
+    return true;
 }
 
 std::string MeshtasticProtocolParser::portNumToString(uint8_t port) {
     switch (static_cast<MSPortNum>(port)) {
-        case MSPortNum::UNSET: return "UNSET";
+        case MSPortNum::UNKNOWN_APP: return "UNKNOWN";
         case MSPortNum::TEXT_MESSAGE_APP: return "TEXT_MESSAGE";
+        case MSPortNum::REMOTE_HARDWARE_APP: return "REMOTE_HARDWARE";
         case MSPortNum::POSITION_APP: return "POSITION";
         case MSPortNum::NODEINFO_APP: return "NODEINFO";
         case MSPortNum::ROUTING_APP: return "ROUTING";
         case MSPortNum::ADMIN_APP: return "ADMIN";
-        case MSPortNum::TELEMETRY_APP: return "TELEMETRY";
+        case MSPortNum::TEXT_MESSAGE_COMPRESSED_APP: return "TEXT_COMPRESSED";
         case MSPortNum::WAYPOINT_APP: return "WAYPOINT";
         case MSPortNum::AUDIO_APP: return "AUDIO";
         case MSPortNum::DETECTION_SENSOR_APP: return "DETECTION_SENSOR";
@@ -196,184 +95,20 @@ std::string MeshtasticProtocolParser::portNumToString(uint8_t port) {
         case MSPortNum::PAXCOUNTER_APP: return "PAXCOUNTER";
         case MSPortNum::SERIAL_APP: return "SERIAL";
         case MSPortNum::STORE_FORWARD_APP: return "STORE_FORWARD";
+        case MSPortNum::NEIGHBORINFO_APP: return "NEIGHBORINFO";
+        case MSPortNum::MqttProxy: return "MQTT_PROXY";
         case MSPortNum::ZPS_APP: return "ZPS";
-        case MSPortNum::PRIVATE_APP: return "PRIVATE_APP";
-        case MSPortNum::ATAK_FORWARD: return "ATAK_FORWARD";
-        default: return "UNKNOWN(" + std::to_string(port) + ")";
+        case MSPortNum::TRACEROUTE_APP: return "TRACEROUTE";
+        case MSPortNum::LOCAL_ONLY_APP: return "LOCAL_ONLY";
+        case MSPortNum::RANGE_TEST_APP: return "RANGE_TEST";
+        case MSPortNum::TELEMETRY_APP: return "TELEMETRY";
+        case MSPortNum::PRIVATE_APP: return "PRIVATE";
+        default: return "PORT_" + std::to_string(port);
     }
 }
 
-std::string MeshtasticProtocolParser::nodeIdToString(uint32_t id) {
-    std::stringstream ss;
-    ss << "!" << std::hex << std::uppercase << std::setw(8) << std::setfill('0') << id;
-    return ss.str();
+uint16_t MeshtasticProtocolParser::calculateCRC(const uint8_t* data, size_t len) {
+    return MeshHeader::calculateCRC(data, len);
 }
 
-uint32_t MeshtasticProtocolParser::stringToNodeId(const std::string& str) {
-    if (str.empty()) return 0;
-    size_t start = (str[0] == '!') ? 1 : 0;
-    try {
-        return std::stoul(str.substr(start), nullptr, 16);
-    } catch (const std::exception&) {
-        return 0;
-    }
-}
-
-// MeshHeader serialization
-std::vector<uint8_t> MeshHeader::serialize() const {
-    std::vector<uint8_t> result;
-    result.reserve(11 + payload.size());
-
-    result.push_back(flag);
-
-    // Destination (little-endian)
-    for (int i = 0; i < 4; i++) {
-        result.push_back((destination >> (i * 8)) & 0xFF);
-    }
-
-    // Source (little-endian)
-    for (int i = 0; i < 4; i++) {
-        result.push_back((source >> (i * 8)) & 0xFF);
-    }
-
-    result.push_back(port);
-    result.push_back(static_cast<uint8_t>(payload.size()));
-
-    result.insert(result.end(), payload.begin(), payload.end());
-
-    return result;
-}
-
-bool MeshHeader::deserialize(const uint8_t* data, size_t len, MeshHeader& header) {
-    if (!data || len < 11) return false;
-
-    size_t offset = 0;
-    header.flag = data[offset++];
-
-    header.destination = 0;
-    for (int i = 0; i < 4; i++) {
-        header.destination |= (uint32_t)data[offset++] << (i * 8);
-    }
-
-    header.source = 0;
-    for (int i = 0; i < 4; i++) {
-        header.source |= (uint32_t)data[offset++] << (i * 8);
-    }
-
-    header.port = data[offset++];
-    header.length = data[offset++];
-
-    if (len < offset + header.length + 2) return false;
-
-    header.payload.assign(data + offset, data + offset + header.length);
-    offset += header.length;
-
-    header.crc = (uint16_t)data[offset] | ((uint16_t)data[offset + 1] << 8);
-
-    // Verify CRC
-    auto serialized = header.serialize();
-    uint16_t calcCRC = MeshtasticProtocolParser::calculateCRC(serialized.data(), serialized.size());
-    return calcCRC == header.crc;
-}
-
-// Payload parsing implementations
-bool MeshtasticProtocolParser::parseDataPayload(const meshtastic::Data& data, DecodedMeshtasticPacket& decoded) {
-    decoded.textMessage = data.text();
-    return true;
-}
-
-bool MeshtasticProtocolParser::parsePositionPayload(const meshtastic::Position& pos, DecodedMeshtasticPacket& decoded) {
-    decoded.position = std::make_shared<Position>(pos);
-    return true;
-}
-
-bool MeshtasticProtocolParser::parseNodeInfoPayload(const meshtastic::NodeInfo& nodeInfo, DecodedMeshtasticPacket& decoded) {
-    decoded.nodeInfo = std::make_shared<NodeInfo>(nodeInfo);
-    return true;
-}
-
-bool MeshtasticProtocolParser::parseTelemetryPayload(const meshtastic::Telemetry& telemetry, DecodedMeshtasticPacket& decoded) {
-    decoded.telemetry = std::make_shared<Telemetry>(telemetry);
-    return true;
-}
-
-bool MeshtasticProtocolParser::parseRoutingPayload(const meshtastic::Routing& routing, DecodedMeshtasticPacket& decoded) {
-    decoded.routing = std::make_shared<Routing>(routing);
-    return true;
-}
-
-bool MeshtasticProtocolParser::parseAdminPayload(const meshtastic::Admin& admin, DecodedMeshtasticPacket& decoded) {
-    decoded.admin = std::make_shared<Admin>(admin);
-    return true;
-}
-
-bool MeshtasticProtocolParser::parseNeighborInfoPayload(const meshtastic::NeighborInfo& neighborInfo, DecodedMeshtasticPacket& decoded) {
-    decoded.neighborInfo = std::make_shared<NeighborInfo>(neighborInfo);
-    return true;
-}
-
-bool MeshtasticProtocolParser::parseWaypointPayload(const meshtastic::Waypoint& waypoint, DecodedMeshtasticPacket& decoded) {
-    decoded.waypoint = std::make_shared<Waypoint>(waypoint);
-    return true;
-}
-
-bool MeshtasticProtocolParser::parseAudioPayload(const meshtastic::Audio& audio, DecodedMeshtasticPacket& decoded) {
-    decoded.audio = std::make_shared<Audio>(audio);
-    return true;
-}
-
-bool MeshtasticProtocolParser::parseDetectionSensorPayload(const meshtastic::DetectionSensor& sensor, DecodedMeshtasticPacket& decoded) {
-    decoded.detectionSensor = std::make_shared<DetectionSensor>(sensor);
-    return true;
-}
-
-bool MeshtasticProtocolParser::parseReplyPayload(const meshtastic::Reply& reply, DecodedMeshtasticPacket& decoded) {
-    decoded.reply = std::make_shared<Reply>(reply);
-    return true;
-}
-
-bool MeshtasticProtocolParser::parsePaxcountPayload(const meshtastic::Paxcount& paxcount, DecodedMeshtasticPacket& decoded) {
-    decoded.paxcount = std::make_shared<Paxcount>(paxcount);
-    return true;
-}
-
-// DecodedMeshtasticPacket methods
-MSPortNum DecodedMeshtasticPacket::getPortNum() const {
-    if (!protoPacket) return MSPortNum::UNSET;
-    return static_cast<MSPortNum>(protoPacket->portnum());
-}
-
-std::string DecodedMeshtasticPacket::getPortName() const {
-    return MeshtasticProtocolParser::portNumToString(getPortNum());
-}
-
-std::string DecodedMeshtasticPacket::getSummary() const {
-    std::stringstream ss;
-    ss << "[" << getPortName() << "] ";
-
-    if (!fromName.empty()) {
-        ss << fromName;
-    } else {
-        ss << MeshtasticProtocolParser::nodeIdToString(header.source);
-    }
-
-    ss << " -> ";
-
-    if (header.destination == MeshtasticProtocol::BROADCAST_ADDR) {
-        ss << "BROADCAST";
-    } else if (!toName.empty()) {
-        ss << toName;
-    } else {
-        ss << MeshtasticProtocolParser::nodeIdToString(header.destination);
-    }
-
-    if (!textMessage.empty()) {
-        ss << ": " << textMessage;
-    }
-
-    if (decrypted) {
-        ss << " [DECRYPTED]";
-    }
-
-    return ss.str();
-}
+} // namespace MeshtasticProtocol

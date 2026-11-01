@@ -1,253 +1,137 @@
 #include "MeshtasticDecryptor.h"
 #include "MeshtasticProtocol.h"
+#include "mesh.pb.h"
 #include <cryptopp/aes.h>
 #include <cryptopp/modes.h>
-#include <cryptopp/filters.h>
 #include <cryptopp/pwdbased.h>
 #include <cryptopp/sha.h>
+#include <cryptopp/filters.h>
 #include <cryptopp/base64.h>
 #include <cryptopp/secblock.h>
-#include <cryptopp/osrng.h>
 #include <algorithm>
-#include <cstring>
+#include <vector>
+#include <array>
 
-MeshtasticDecryptor::MeshtasticDecryptor() {
-    // Constructor
+namespace MeshtasticDecryptor {
+
+MeshtasticDecryptor::MeshtasticDecryptor() : keyType(KeyType::AES128), hasKey_(false) {
 }
 
 MeshtasticDecryptor::~MeshtasticDecryptor() {
-    cleanup();
-}
-
-void MeshtasticDecryptor::cleanup() {
-    if (aesContext) {
-        delete static_cast<CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption*>(aesContext);
-        aesContext = nullptr;
-    }
-    key.clear();
-    keySet = false;
-}
-
-bool MeshtasticDecryptor::initAESCTR() {
-    cleanup();
-
-    try {
-        if (keyType == KeyType::AES128) {
-            if (key.size() != 16) return false;
-            aesContext = new CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption(
-                key.data(), 16, std::array<uint8_t, 16>{}.data()  // IV will be set per packet
-            );
-        } else {
-            if (key.size() != 32) return false;
-            aesContext = new CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption(
-                key.data(), 32, std::array<uint8_t, 16>{}.data()
-            );
-        }
-        return true;
-    } catch (const std::exception& e) {
-        cleanup();
-        return false;
+    // Clear key material
+    if (!key.empty()) {
+        std::fill(key.begin(), key.end(), 0);
     }
 }
 
-bool MeshtasticDecryptor::setKey(const std::array<uint8_t, 16>& key) {
-    this->key.assign(key.begin(), key.end());
-    this->keyType = KeyType::AES128;
-    this->keySet = true;
-    return initAESCTR();
+bool MeshtasticDecryptor::setKey(const std::array<uint8_t, 16>& key128) {
+    key.assign(key128.begin(), key128.end());
+    keyType = KeyType::AES128;
+    hasKey_ = true;
+    return true;
 }
 
-bool MeshtasticDecryptor::setKey(const std::array<uint8_t, 32>& key) {
-    this->key.assign(key.begin(), key.end());
-    this->keyType = KeyType::AES256;
-    this->keySet = true;
-    return initAESCTR();
+bool MeshtasticDecryptor::setKey(const std::array<uint8_t, 32>& key256) {
+    key.assign(key256.begin(), key256.end());
+    keyType = KeyType::AES256;
+    hasKey_ = true;
+    return true;
 }
 
-bool MeshtasticDecryptor::setKeyFromPSK(const std::string& pskBase64, KeyType type) {
-    auto derived = deriveKeyFromPSK(pskBase64, type);
-    if (derived.empty()) return false;
+bool MeshtasticDecryptor::decrypt(google::protobuf::Message& packet) {
+    if (!hasKey_) return false;
 
-    if (type == KeyType::AES128) {
-        if (derived.size() < 16) return false;
-        std::array<uint8_t, 16> key;
-        std::copy(derived.begin(), derived.begin() + 16, key.begin());
-        return setKey(key);
-    } else {
-        if (derived.size() < 32) return false;
-        std::array<uint8_t, 32> key;
-        std::copy(derived.begin(), derived.begin() + 32, key.begin());
-        return setKey(key);
-    }
-}
+    // Cast to MeshPacket to access fields
+    auto* meshPacket = dynamic_cast<meshtastic::MeshPacket*>(&packet);
+    if (!meshPacket) return false;
 
-std::vector<uint8_t> MeshtasticDecryptor::deriveKeyFromPSK(const std::string& pskBase64,
-                                                            KeyType type,
-                                                            int iterations) {
-    try {
-        // Decode base64 PSK
-        std::string decoded;
-        CryptoPP::StringSource(pskBase64, true,
-            new CryptoPP::Base64Decoder(
-                new CryptoPP::StringSink(decoded)
-            )
-        );
+    if (!meshPacket->encrypted()) return false;
 
-        if (decoded.empty()) {
-            return {};
-        }
+    // Get encrypted payload
+    const std::string& encryptedPayload = meshPacket->payload();
+    if (encryptedPayload.empty()) return false;
 
-        // Meshtastic uses PBKDF2-HMAC-SHA256
-        // Salt is "meshtastic" (10 bytes)
-        // Iterations: 100000 (configurable)
-        // Key length: 16 bytes (AES-128) or 32 bytes (AES-256)
-        size_t keyLen = (type == KeyType::AES128) ? 16 : 32;
-        std::vector<uint8_t> derivedKey(keyLen);
+    // Build nonce: packet_id (4 bytes LE) + from_node (4 bytes LE) + 4 zero bytes
+    std::array<uint8_t, 12> nonce = buildNonce(meshPacket->id(), meshPacket->from());
 
-        CryptoPP::PKCS5_PBKDF2_HMAC<CryptoPP::SHA256> pbkdf2;
-        pbkdf2.DeriveKey(
-            derivedKey.data(), derivedKey.size(),
-            0,  // id (not used)
-            reinterpret_cast<const CryptoPP::byte*>(decoded.data()), decoded.size(),
-            reinterpret_cast<const CryptoPP::byte*>(PBKDF2_SALT), strlen(PBKDF2_SALT),
-            iterations
-        );
+    // Prepare output buffer
+    std::vector<uint8_t> decrypted(encryptedPayload.size());
 
-        return derivedKey;
-    } catch (const std::exception&) {
-        return {};
-    }
-}
-
-bool MeshtasticDecryptor::decrypt(meshtastic::MeshPacket& packet) {
-    if (!keySet || !aesContext || packet.payload().empty()) {
+    // Decrypt using AES-CTR
+    if (!decryptCTR(
+            reinterpret_cast<const uint8_t*>(encryptedPayload.data()),
+            encryptedPayload.size(),
+            decrypted.data(),
+            nonce)) {
         return false;
     }
 
-    try {
-        // Build nonce from packet ID and source node
-        // Meshtastic nonce format: 8 bytes packet_id (LE) + 8 bytes from_node (LE)
-        std::array<uint8_t, 16> nonce = buildNonce(packet.id(), packet.from());
-
-        // Decrypt payload
-        std::string decrypted;
-        CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption* decryptor =
-            static_cast<CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption*>(aesContext);
-
-        // Resync with new nonce
-        decryptor->Resynchronize(nonce.data(), nonce.size());
-
-        CryptoPP::StringSource ss(
-            packet.payload().data(), packet.payload().size(), true,
-            new CryptoPP::StreamTransformationFilter(*decryptor,
-                new CryptoPP::StringSink(decrypted)
-            )
-        );
-
-        // Replace payload with decrypted data
-        packet.set_payload(decrypted);
-        return true;
-    } catch (const std::exception&) {
-        return false;
-    }
-}
-
-bool MeshtasticDecryptor::decryptPayload(const uint8_t* ciphertext, size_t len,
-                                         uint8_t* plaintext,
-                                         const std::array<uint8_t, 16>& nonce) {
-    if (!keySet || !aesContext || !ciphertext || !plaintext || len == 0) {
-        return false;
-    }
-
-    try {
-        CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption* decryptor =
-            static_cast<CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption*>(aesContext);
-
-        // Resync with new nonce
-        decryptor->Resynchronize(nonce.data(), nonce.size());
-
-        // Decrypt directly to output buffer
-        decryptor->ProcessData(plaintext, ciphertext, len);
-        return true;
-    } catch (const std::exception&) {
-        return false;
-    }
-}
-
-std::array<uint8_t, 16> MeshtasticDecryptor::buildNonce(uint64_t packetId, uint64_t fromNode) {
-    std::array<uint8_t, 16> nonce = {};
-
-    // Meshtastic nonce: 8 bytes packet_id (little-endian) + 8 bytes from_node (little-endian)
-    for (int i = 0; i < 8; i++) {
-        nonce[i] = static_cast<uint8_t>((packetId >> (i * 8)) & 0xFF);
-    }
-    for (int i = 0; i < 8; i++) {
-        nonce[8 + i] = static_cast<uint8_t>((fromNode >> (i * 8)) & 0xFF);
-    }
-
-    return nonce;
-}
-
-// ============================================================================
-// MeshtasticCrypto namespace implementation
-// ============================================================================
-
-namespace MeshtasticCrypto {
-
-std::vector<uint8_t> base64Decode(const std::string& input) {
-    std::string decoded;
-    try {
-        CryptoPP::StringSource(input, true,
-            new CryptoPP::Base64Decoder(
-                new CryptoPP::StringSink(decoded)
-            )
-        );
-        return std::vector<uint8_t>(decoded.begin(), decoded.end());
-    } catch (const std::exception&) {
-        return {};
-    }
-}
-
-std::string base64Encode(const uint8_t* data, size_t len) {
-    std::string encoded;
-    try {
-        CryptoPP::StringSource(data, len, true,
-            new CryptoPP::Base64Encoder(
-                new CryptoPP::StringSink(encoded),
-                false  // no line breaks
-            )
-        );
-        return encoded;
-    } catch (const std::exception&) {
-        return "";
-    }
-}
-
-std::vector<uint8_t> parsePSK(const std::string& pskBase64) {
-    return base64Decode(pskBase64);
-}
-
-bool verifyDecryption(const uint8_t* data, size_t len) {
-    if (!data || len < 4) return false;
-
-    // Quick check: Meshtastic packets start with 0x94 flag
-    // But after decryption, it's a protobuf which doesn't have fixed magic
-    // Check for valid protobuf varint structure
-
-    // Try to parse as protobuf MeshPacket
-    // First byte should be a valid field tag (field 1 = from node, wire type 0 = varint)
-    // So first byte should have lower 3 bits = 0 (varint) and field number >= 1
-    uint8_t firstByte = data[0];
-    uint8_t wireType = firstByte & 0x07;
-    uint8_t fieldNum = firstByte >> 3;
-
-    // Valid mesh packet fields: 1=from, 2=to, 3=id, 4=channel, etc.
-    // All are varint (wire type 0)
-    if (wireType != 0 || fieldNum == 0 || fieldNum > 25) {
-        return false;
-    }
+    // Replace payload with decrypted data
+    meshPacket->set_payload(decrypted.data(), decrypted.size());
+    meshPacket->set_encrypted(false);
 
     return true;
 }
 
-} // namespace MeshtasticCrypto
+std::vector<uint8_t> MeshtasticDecryptor::deriveKeyFromPSK(const std::string& pskBase64, KeyType keyType) {
+    // Decode base64 PSK
+    std::string pskDecoded;
+    try {
+        CryptoPP::StringSource ss(pskBase64, true,
+            new CryptoPP::Base64Decoder(
+                new CryptoPP::StringSink(pskDecoded)
+            )
+        );
+    } catch (...) {
+        return {};
+    }
+
+    // Meshtastic uses PBKDF2-HMAC-SHA256 with salt "Meshtastic" and 1000 iterations
+    const std::string salt = MeshtasticProtocol::PBKDF2_SALT;
+    const unsigned int iterations = 1000;
+    const size_t keyLength = (keyType == KeyType::AES256) ? 32 : 16;
+
+    std::vector<uint8_t> derivedKey(keyLength);
+
+    try {
+        CryptoPP::PKCS5_PBKDF2_HMAC<CryptoPP::SHA256> pbkdf2;
+        pbkdf2.DeriveKey(
+            derivedKey.data(), derivedKey.size(),
+            0,  // default key derivation parameters
+            reinterpret_cast<const CryptoPP::byte*>(pskDecoded.data()), pskDecoded.size(),
+            reinterpret_cast<const CryptoPP::byte*>(salt.data()), salt.size(),
+            iterations
+        );
+    } catch (...) {
+        return {};
+    }
+
+    return derivedKey;
+}
+
+std::array<uint8_t, 12> MeshtasticDecryptor::buildNonce(uint32_t packetId, uint32_t fromNode) {
+    return MeshtasticProtocol::MeshtasticCrypto::buildNonce(packetId, fromNode);
+}
+
+bool MeshtasticDecryptor::decryptCTR(const uint8_t* input, size_t len, uint8_t* output, const std::array<uint8_t, 12>& nonce) {
+    try {
+        // CryptoPP AES-CTR mode
+        CryptoPP::CTR_Mode<CryptoPP::AES>::Decryption decryptor;
+
+        // Key length: 16 bytes for AES-128, 32 bytes for AES-256
+        size_t keyLen = (keyType == KeyType::AES256) ? 32 : 16;
+        if (key.size() < keyLen) return false;
+
+        // Set key and IV (nonce)
+        decryptor.SetKeyWithIV(key.data(), keyLen, nonce.data(), nonce.size());
+
+        // Process data
+        decryptor.ProcessData(output, input, len);
+
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+} // namespace MeshtasticDecryptor

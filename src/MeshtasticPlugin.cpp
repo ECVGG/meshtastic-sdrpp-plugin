@@ -1,414 +1,246 @@
 #include "MeshtasticPlugin.h"
-#include "MeshtasticProtocol.h"
-#include <nlohmann/json.hpp>
+#include "MeshtasticDecoder.h"
 #include <imgui.h>
+#include <nlohmann/json.hpp>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <iomanip>
 
-// Use sdrpp namespace for forward-declared types
-using namespace sdrpp;
-using nlohmann::json;
+using json = nlohmann::json;
 
-// Global config manager instance
-static ConfigManager g_config;
-
-MeshtasticPlugin::MeshtasticPlugin(std::string name) {
-    this->name = name;
-    decoder = std::make_unique<MeshtasticDecoder>();
-
-    // Register GUI menu entry
-    if (gui::Menu::instance()) {
-        gui::Menu::instance()->registerEntry(name, menuHandler, this);
-    }
-}
-
-MeshtasticPlugin::~MeshtasticPlugin() {
-    if (gui::Menu::instance()) {
-        gui::Menu::instance()->removeEntry(name);
-    }
-}
-
-void MeshtasticPlugin::postInit() {
-    // Bind to IQ stream after all modules loaded
-    iqFrontEnd = sigpath::iqFrontEnd;
-    if (iqFrontEnd) {
-        iqStream = iqFrontEnd->bindIQStream(name);
-        flog::info("[Meshtastic] Bound to IQ stream");
-    } else {
-        flog::warn("[Meshtastic] IQFrontEnd not available");
-    }
-
-    // Load configuration
+MeshtasticPlugin::MeshtasticPlugin(sdrpp::ModuleManager* manager, const std::string& configPath)
+    : moduleManager(manager), configPath(configPath) {
+    decoder = std::make_unique<MeshtasticDecoder::MeshtasticDecoder>();
     loadConfig();
 }
 
-void MeshtasticPlugin::enable() {
-    enabled = true;
-    flog::info("[Meshtastic] Plugin enabled");
+MeshtasticPlugin::~MeshtasticPlugin() {
+    saveConfig();
 }
 
-void MeshtasticPlugin::disable() {
-    enabled = false;
-    flog::info("[Meshtastic] Plugin disabled");
+void MeshtasticPlugin::processIQ(const std::complex<float>* iq, size_t count, double sampleRate) {
+    if (!enabled || !decoder) return;
+
+    auto packets = decoder->processIQ(iq, count, sampleRate);
+    // Packets are handled internally by decoder (history, node database, etc.)
 }
 
-bool MeshtasticPlugin::isEnabled() {
-    return enabled;
-}
+void MeshtasticPlugin::drawGUI() {
+    if (!showWindow) return;
 
-void MeshtasticPlugin::menuHandler(void* ctx) {
-    MeshtasticPlugin* _this = static_cast<MeshtasticPlugin*>(ctx);
-    _this->drawMenu();
-}
-
-void MeshtasticPlugin::drawMenu() {
-    // Main window title
-    ImGui::TextColored(ImVec4(0.3f, 0.8f, 0.3f, 1.0f), "Meshtastic Decoder");
-    ImGui::Separator();
+    ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Meshtastic Decoder", &showWindow)) {
+        ImGui::End();
+        return;
+    }
 
     // Statistics
-    ImGui::Text("Packets: RX=%llu Decoded=%llu Decrypted=%llu Failed=%llu",
-                decoder->getPacketsReceived(),
-                decoder->getPacketsDecoded(),
-                decoder->getPacketsDecrypted(),
-                decoder->getPacketsFailed());
+    ImGui::Text("Statistics:");
+    ImGui::Separator();
+    ImGui::Text("Packets Received: %llu", decoder->getPacketsReceived());
+    ImGui::Text("Packets Decoded: %llu", decoder->getPacketsDecoded());
+    ImGui::Text("Packets Decrypted: %llu", decoder->getPacketsDecrypted());
+    ImGui::Text("Success Rate: %.1f%%",
+        decoder->getPacketsReceived() > 0 ?
+        (100.0 * decoder->getPacketsDecoded() / decoder->getPacketsReceived()) : 0.0);
 
-    // LoRa Configuration
-    if (ImGui::CollapsingHeader("LoRa Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
-        auto& config = decoder->getLoRaConfig();
+    ImGui::Spacing();
+    ImGui::Separator();
 
-        ImGui::Text("Center Frequency");
-        ImGui::SameLine(150);
-        if (ImGui::InputDouble("##freq", &config.centerFrequency, 100000, 1000000, "%.3f MHz")) {
-            decoder->setLoRaConfig(config);
-        }
-
-        ImGui::Text("Spreading Factor");
-        ImGui::SameLine(150);
-        if (ImGui::Combo("##sf", &config.spreadingFactor, "SF7\0SF8\0SF9\0SF10\0SF11\0SF12\0")) {
-            decoder->setLoRaConfig(config);
-        }
-
-        ImGui::Text("Bandwidth");
-        ImGui::SameLine(150);
-        int bwIdx = 0;
-        if (config.bandwidth == 125000) bwIdx = 0;
-        else if (config.bandwidth == 250000) bwIdx = 1;
-        else if (config.bandwidth == 500000) bwIdx = 2;
-        if (ImGui::Combo("##bw", &bwIdx, "125 kHz\0250 kHz\0500 kHz\0")) {
-            config.bandwidth = (bwIdx == 0) ? 125000 : (bwIdx == 1) ? 250000 : 500000;
-            decoder->setLoRaConfig(config);
-        }
-
-        ImGui::Text("Coding Rate");
-        ImGui::SameLine(150);
-        if (ImGui::Combo("##cr", &config.codingRate, "4/5\04/6\04/7\04/8\0")) {
-            config.codingRate = config.codingRate + 5;  // 0->5, 1->6, etc.
-            decoder->setLoRaConfig(config);
-        }
-
-        ImGui::Text("Sync Word");
-        ImGui::SameLine(150);
-        if (ImGui::Combo("##sync", &config.syncWord, "Public (0x12)\0Private (0x2B)\0")) {
-            config.syncWord = (config.syncWord == 0) ? 0x12 : 0x2B;
-            decoder->setLoRaConfig(config);
-        }
-
-        ImGui::Text("Preamble Length");
-        ImGui::SameLine(150);
-        if (ImGui::InputInt("##preamble", &config.preambleLength, 1, 10)) {
-            config.preambleLength = std::clamp(config.preambleLength, 6, 65535);
-            decoder->setLoRaConfig(config);
-        }
-
-        ImGui::Text("Sample Rate");
-        ImGui::SameLine(150);
-        if (ImGui::InputDouble("##sr", &config.sampleRate, 100000, 1000000, "%.0f")) {
-            decoder->setLoRaConfig(config);
-        }
-    }
-
-    // Channel Management
-    if (ImGui::CollapsingHeader("Channels & Encryption", ImGuiTreeNodeFlags_DefaultOpen)) {
+    // Channel management
+    if (ImGui::CollapsingHeader("Channels", ImGuiTreeNodeFlags_DefaultOpen)) {
         auto channels = decoder->getChannels();
-
         for (size_t i = 0; i < channels.size(); i++) {
-            const auto& ch = channels[i];
-            std::string header = ch.name.empty() ? "Channel " + std::to_string(i) : ch.name;
-            if (!ch.enabled) header += " (disabled)";
-
-            if (ImGui::TreeNode(header.c_str())) {
-                ImGui::Text("Name");
-                ImGui::SameLine(150);
-                char nameBuf[64];
-                strncpy(nameBuf, ch.name.c_str(), sizeof(nameBuf) - 1);
-                nameBuf[sizeof(nameBuf) - 1] = 0;
-                if (ImGui::InputText("##name", nameBuf, sizeof(nameBuf))) {
-                    // Update name - need to cast away const
-                }
-
-                ImGui::Text("PSK (Base64)");
-                ImGui::SameLine(150);
-                char pskBuf[256];
-                strncpy(pskBuf, ch.pskBase64.c_str(), sizeof(pskBuf) - 1);
-                pskBuf[sizeof(pskBuf) - 1] = 0;
-                if (ImGui::InputText("##psk", pskBuf, sizeof(pskBuf))) {
-                    decoder->updateChannelKey(static_cast<int>(i), pskBuf);
-                }
-
-                ImGui::Text("AES-256");
-                ImGui::SameLine(150);
-                bool useAES256 = ch.useAES256;
-                if (ImGui::Checkbox("##aes256", &useAES256)) {
-                    // Would need update method
-                }
-
-                ImGui::Text("Enabled");
-                ImGui::SameLine(150);
-                bool enabled = ch.enabled;
-                if (ImGui::Checkbox("##enabled", &enabled)) {
-                    // Would need update method
-                }
-
-                ImGui::TreePop();
+            ImGui::PushID(static_cast<int>(i));
+            ImGui::Checkbox("##enabled", const_cast<bool*>(&channels[i].enabled));
+            ImGui::SameLine();
+            ImGui::Text("%s", channels[i].name.c_str());
+            ImGui::SameLine();
+            ImGui::Text("(AES%s)", channels[i].useAES256 ? "256" : "128");
+            if (ImGui::Button("Remove")) {
+                decoder->removeChannel(static_cast<int>(i));
             }
+            ImGui::PopID();
         }
 
         ImGui::Separator();
-
+        ImGui::InputText("Channel Name", channelNameInput, sizeof(channelNameInput));
+        ImGui::InputText("PSK (Base64)", pskInput, sizeof(pskInput));
+        ImGui::Checkbox("AES-256", &useAES256);
         if (ImGui::Button("Add Channel")) {
-            MeshtasticDecoder::ChannelInfo newCh;
-            newCh.name = "Channel " + std::to_string(channels.size());
-            newCh.enabled = true;
-            newCh.index = static_cast<int>(channels.size());
-            decoder->addChannel(newCh);
-        }
-
-        ImGui::SameLine();
-
-        if (ImGui::Button("Remove Selected") && selectedChannel >= 0 && selectedChannel < static_cast<int>(channels.size())) {
-            decoder->removeChannel(selectedChannel);
+            MeshtasticDecoder::ChannelInfo ch;
+            ch.name = channelNameInput;
+            ch.pskBase64 = pskInput;
+            ch.enabled = true;
+            ch.useAES256 = useAES256;
+            decoder->addChannel(ch);
+            channelNameInput[0] = '\0';
+            pskInput[0] = '\0';
         }
     }
 
-    // Packet Display
-    if (ImGui::CollapsingHeader("Received Packets", ImGuiTreeNodeFlags_DefaultOpen)) {
-        // Filter options
-        ImGui::Text("Filter");
-        ImGui::SameLine(150);
-        static char filterBuf[128] = "";
-        ImGui::InputText("##filter", filterBuf, sizeof(filterBuf));
+    ImGui::Spacing();
+    ImGui::Separator();
 
-        ImGui::Text("Show Decrypted Only");
-        ImGui::SameLine(150);
-        static bool showDecryptedOnly = false;
-        ImGui::Checkbox("##decrypted", &showDecryptedOnly);
+    // LoRa Settings
+    if (ImGui::CollapsingHeader("LoRa Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+        bool changed = false;
+        changed |= ImGui::Combo("Spreading Factor", &spreadingFactor, "7\08\09\010\011\012\0");
+        changed |= ImGui::Combo("Bandwidth", &bandwidth, "125000\0250000\0500000\0");
+        changed |= ImGui::Combo("Coding Rate", &codingRate, "5 (4/5)\06 (4/6)\07 (4/7)\08 (4/8)\0");
+        changed |= ImGui::InputInt("Preamble Length", &preambleLength);
+        changed |= ImGui::InputScalar("Sync Word", ImGuiDataType_U8, &syncWord);
+        changed |= ImGui::Checkbox("CRC Enabled", &crcEnabled);
+        changed |= ImGui::Checkbox("Implicit Header", &implicitHeader);
+        changed |= ImGui::Checkbox("IQ Inverted", &iqInverted);
+        changed |= ImGui::InputDouble("Center Frequency (Hz)", &centerFrequency, 1e6, 1e7, "%.0f");
+        changed |= ImGui::InputDouble("Sample Rate (Hz)", &sampleRate, 1e5, 1e6, "%.0f");
 
+        if (changed) {
+            MeshtasticDecoder::LoRaModemConfig config;
+            config.spreadingFactor = spreadingFactor;
+            config.bandwidth = bandwidth;
+            config.codingRate = codingRate;
+            config.preambleLength = preambleLength;
+            config.syncWord = syncWord;
+            config.crcEnabled = crcEnabled;
+            config.implicitHeader = implicitHeader;
+            config.iqInverted = iqInverted;
+            config.centerFrequency = centerFrequency;
+            config.sampleRate = sampleRate;
+            decoder->setLoRaConfig(config);
+        }
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+
+    // Node database
+    if (ImGui::CollapsingHeader("Nodes")) {
+        auto nodes = decoder->getAllNodes();
+        ImGui::Columns(6, "nodes");
+        ImGui::Text("ID"); ImGui::NextColumn();
+        ImGui::Text("Long Name"); ImGui::NextColumn();
+        ImGui::Text("Short Name"); ImGui::NextColumn();
+        ImGui::Text("Lat"); ImGui::NextColumn();
+        ImGui::Text("Lon"); ImGui::NextColumn();
+        ImGui::Text("Last Seen"); ImGui::NextColumn();
         ImGui::Separator();
 
-        // Packet list
-        const auto& history = decoder->getPacketHistory();
-        if (ImGui::BeginTable("packets", 6,
-                              ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-                              ImGuiTableFlags_ScrollY | ImGuiTableFlags_Sortable)) {
-
-            ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, 80);
-            ImGui::TableSetupColumn("From", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("To", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("Port", ImGuiTableColumnFlags_WidthFixed, 100);
-            ImGui::TableSetupColumn("SNR/RSSI", ImGuiTableColumnFlags_WidthFixed, 100);
-            ImGui::TableSetupColumn("Data", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableHeadersRow();
-
-            // Iterate in reverse (newest first)
-            for (auto it = history.rbegin(); it != history.rend(); ++it) {
-                const auto& pkt = *it;
-
-                // Apply filter
-                if (filterBuf[0] && pkt.decodedText.find(filterBuf) == std::string::npos &&
-                    pkt.fromName.find(filterBuf) == std::string::npos &&
-                    pkt.toName.find(filterBuf) == std::string::npos) {
-                    continue;
-                }
-
-                if (showDecryptedOnly && !pkt.decrypted) continue;
-
-                ImGui::TableNextRow();
-
-                // Time
-                ImGui::TableSetColumnIndex(0);
-                auto time_t = static_cast<time_t>(pkt.timestamp);
-                char timeStr[32];
-                strftime(timeStr, sizeof(timeStr), "%H:%M:%S", localtime(&time_t));
-                ImGui::Text("%s", timeStr);
-
-                // From
-                ImGui::TableSetColumnIndex(1);
-                ImGui::Text("%s", pkt.fromName.c_str());
-
-                // To
-                ImGui::TableSetColumnIndex(2);
-                ImGui::Text("%s", pkt.toName.c_str());
-
-                // Port
-                ImGui::TableSetColumnIndex(3);
-                if (pkt.decrypted) {
-                    ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "%s", pkt.protoPacket ? MeshtasticProtocolParser::portNumToString(pkt.protoPacket->portnum()).c_str() : "?");
-                } else {
-                    ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "%s (ENC)", pkt.protoPacket ? MeshtasticProtocolParser::portNumToString(pkt.protoPacket->portnum()).c_str() : "?");
-                }
-
-                // SNR/RSSI
-                ImGui::TableSetColumnIndex(4);
-                ImGui::Text("%.1f dB / %d dBm", pkt.snr, pkt.rssi);
-
-                // Data
-                ImGui::TableSetColumnIndex(5);
-                ImGui::Text("%s", pkt.decodedText.c_str());
-            }
-
-            ImGui::EndTable();
+        for (const auto& node : nodes) {
+            char idStr[16];
+            snprintf(idStr, sizeof(idStr), "!%08X", node.id);
+            ImGui::Text("%s", idStr); ImGui::NextColumn();
+            ImGui::Text("%s", node.longName.c_str()); ImGui::NextColumn();
+            ImGui::Text("%s", node.shortName.c_str()); ImGui::NextColumn();
+            ImGui::Text("%.6f", node.latitude); ImGui::NextColumn();
+            ImGui::Text("%.6f", node.longitude); ImGui::NextColumn();
+            ImGui::Text("%.0fs ago", node.lastSeen > 0 ? (time(nullptr) - static_cast<time_t>(node.lastSeen)) : 0); ImGui::NextColumn();
         }
+        ImGui::Columns(1);
     }
 
-    // Node Database
-    if (ImGui::CollapsingHeader("Node Database")) {
-        const auto& nodes = decoder->getNodes();
-        if (ImGui::BeginTable("nodes", 7,
-                              ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-                              ImGuiTableFlags_ScrollY)) {
+    ImGui::Spacing();
+    ImGui::Separator();
 
-            ImGui::TableSetupColumn("ID", ImGuiTableColumnFlags_WidthFixed, 100);
-            ImGui::TableSetupColumn("Long Name", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("Short", ImGuiTableColumnFlags_WidthFixed, 60);
-            ImGui::TableSetupColumn("Role", ImGuiTableColumnFlags_WidthFixed, 80);
-            ImGui::TableSetupColumn("Last Seen", ImGuiTableColumnFlags_WidthFixed, 100);
-            ImGui::TableSetupColumn("SNR/RSSI", ImGuiTableColumnFlags_WidthFixed, 100);
-            ImGui::TableSetupColumn("Position", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableHeadersRow();
+    // Packet history
+    if (ImGui::CollapsingHeader("Recent Packets")) {
+        auto history = decoder->getPacketHistory();
+        ImGui::Columns(7, "packets");
+        ImGui::Text("Time"); ImGui::NextColumn();
+        ImGui::Text("From"); ImGui::NextColumn();
+        ImGui::Text("To"); ImGui::NextColumn();
+        ImGui::Text("Port"); ImGui::NextColumn();
+        ImGui::Text("RSSI"); ImGui::NextColumn();
+        ImGui::Text("SNR"); ImGui::NextColumn();
+        ImGui::Text("Message"); ImGui::NextColumn();
+        ImGui::Separator();
 
-            for (const auto& [id, node] : nodes) {
-                ImGui::TableNextRow();
-
-                ImGui::TableSetColumnIndex(0);
-                ImGui::Text("!%08X", id);
-
-                ImGui::TableSetColumnIndex(1);
-                ImGui::Text("%s", node.longName.c_str());
-
-                ImGui::TableSetColumnIndex(2);
-                ImGui::Text("%s", node.shortName.c_str());
-
-                ImGui::TableSetColumnIndex(3);
-                ImGui::Text("%s", node.role.c_str());
-
-                ImGui::TableSetColumnIndex(4);
-                auto time_t = static_cast<time_t>(node.lastSeen);
-                char timeStr[32];
-                strftime(timeStr, sizeof(timeStr), "%H:%M:%S", localtime(&time_t));
-                ImGui::Text("%s", timeStr);
-
-                ImGui::TableSetColumnIndex(5);
-                ImGui::Text("%.1f / %d", node.lastSnr, node.lastRssi);
-
-                ImGui::TableSetColumnIndex(6);
-                if (node.latitude != 0 || node.longitude != 0) {
-                    ImGui::Text("%.6f, %.6f", node.latitude, node.longitude);
-                }
-            }
-
-            ImGui::EndTable();
+        for (auto it = history.rbegin(); it != history.rend(); ++it) {
+            const auto& p = *it;
+            time_t t = static_cast<time_t>(p.timestamp);
+            char timeStr[32];
+            strftime(timeStr, sizeof(timeStr), "%H:%M:%S", localtime(&t));
+            ImGui::Text("%s", timeStr); ImGui::NextColumn();
+            ImGui::Text("%s", p.fromName.c_str()); ImGui::NextColumn();
+            ImGui::Text("%s", p.toName.c_str()); ImGui::NextColumn();
+            ImGui::Text("%s", MeshtasticDecoder::MeshtasticDecoder::portNumToString(static_cast<uint8_t>(p.header.port)).c_str()); ImGui::NextColumn();
+            ImGui::Text("%d", p.rssi); ImGui::NextColumn();
+            ImGui::Text("%.1f", p.snr); ImGui::NextColumn();
+            ImGui::Text("%s", p.decodedText.c_str()); ImGui::NextColumn();
         }
+        ImGui::Columns(1);
     }
 
-    // Configuration persistence
-    if (ImGui::CollapsingHeader("Configuration")) {
-        if (ImGui::Button("Save Config")) {
-            saveConfig();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Load Config")) {
-            loadConfig();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Clear History")) {
-            // Would need clear method
-        }
-    }
+    ImGui::End();
+}
+
+void MeshtasticPlugin::drawSettings() {
+    // Settings window (could be separate)
 }
 
 void MeshtasticPlugin::loadConfig() {
-    json def = json({});
-    def["lora"] = json({});
-    def["channels"] = json::array();
+    std::ifstream file(configPath);
+    if (file.is_open()) {
+        try {
+            json config;
+            file >> config;
+            decoder->loadConfig(config);
 
-    config = &g_config;
-    config->setPath(core::args["root"].s() + "/meshtastic_config.json");
-    config->load(def);
-    config->enableAutoSave();
-
-    if (config->conf.contains("lora") || config->conf.contains("channels")) {
-        decoder->loadConfig(config->conf);
+            // Update GUI state
+            auto loraConfig = decoder->getLoRaConfig();
+            spreadingFactor = loraConfig.spreadingFactor;
+            bandwidth = loraConfig.bandwidth;
+            codingRate = loraConfig.codingRate;
+            preambleLength = loraConfig.preambleLength;
+            syncWord = loraConfig.syncWord;
+            crcEnabled = loraConfig.crcEnabled;
+            implicitHeader = loraConfig.implicitHeader;
+            iqInverted = loraConfig.iqInverted;
+            centerFrequency = loraConfig.centerFrequency;
+            sampleRate = loraConfig.sampleRate;
+        } catch (...) {
+            // Ignore config errors, use defaults
+        }
     }
 }
 
 void MeshtasticPlugin::saveConfig() {
-    config->acquire();
-    config->conf = decoder->saveConfig();
-    config->release(true);
-    config->save();
-    flog::info("[Meshtastic] Configuration saved");
+    json config = decoder->saveConfig();
+    std::ofstream file(configPath);
+    if (file.is_open()) {
+        file << config.dump(4);
+    }
 }
 
-// IQ stream processing callback
-void MeshtasticPlugin::processIQStream() {
-    if (!enabled || !iqStream) return;
-
-    // Get available samples
-    size_t available = iqStream->getReadAvailable();
-    if (available == 0) return;
-
-    // Read samples
-    std::vector<dsp::complex_t> buffer(available);
-    size_t read = iqStream->read(buffer.data(), available);
-    if (read == 0) return;
-
-    // Process through decoder
-    auto packets = decoder->processIQ(buffer.data(), read, iqFrontEnd->getSampleRate());
-
-    // Packets are stored in decoder's history, GUI will display them
+uint64_t MeshtasticPlugin::getPacketsReceived() const {
+    return decoder ? decoder->getPacketsReceived() : 0;
 }
 
-// ============================================================================
-// SDR++ Module Exports
-// ============================================================================
-
-SDRPP_MOD_INFO{
-    /* Name:            */ "meshtastic",
-    /* Description:     */ "Meshtastic LoRa protocol decoder and decryptor",
-    /* Author:          */ "Victor",
-    /* Version:         */ 1, 0, 0,
-    /* Max instances    */ 1
-};
-
-MOD_EXPORT void _INIT_() {
-    json def = json({});
-    def["lora"] = json({});
-    def["channels"] = json::array();
-    g_config.setPath(core::args["root"].s() + "/meshtastic_config.json");
-    g_config.load(def);
-    g_config.enableAutoSave();
-    flog::info("[Meshtastic] Module initialized");
+uint64_t MeshtasticPlugin::getPacketsDecoded() const {
+    return decoder ? decoder->getPacketsDecoded() : 0;
 }
 
-MOD_EXPORT ModuleManager::Instance* _CREATE_INSTANCE_(std::string name) {
-    return new MeshtasticPlugin(name);
+uint64_t MeshtasticPlugin::getPacketsDecrypted() const {
+    return decoder ? decoder->getPacketsDecrypted() : 0;
 }
 
-MOD_EXPORT void _DELETE_INSTANCE_(ModuleManager::Instance* instance) {
-    delete static_cast<MeshtasticPlugin*>(instance);
-}
+// C API exports
+extern "C" {
+    SDRPP_EXPORT void* SDRPP_MODULE_CREATE_INSTANCE(sdrpp::ModuleManager* manager, const char* configPath) {
+        return new MeshtasticPlugin(manager, configPath ? configPath : "");
+    }
 
-MOD_EXPORT void _END_() {
-    g_config.disableAutoSave();
-    g_config.save();
-    flog::info("[Meshtastic] Module shutdown");
+    SDRPP_EXPORT void SDRPP_MODULE_DELETE_INSTANCE(void* instance) {
+        delete static_cast<MeshtasticPlugin*>(instance);
+    }
+
+    SDRPP_EXPORT void SDRPP_MODULE_INIT() {
+        // Module initialization
+    }
+
+    SDRPP_EXPORT void SDRPP_MODULE_END() {
+        // Module cleanup
+    }
 }

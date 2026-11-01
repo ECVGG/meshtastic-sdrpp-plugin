@@ -1,69 +1,99 @@
 #pragma once
 
-// Forward declarations for SDR++ types - avoid including internal headers
-// These are provided by SDRPlusPlus::SDRPlusPlus INTERFACE target
-namespace sdrpp {
-    class ModuleManager;
-    class ConfigManager;
-    class SignalPath;
-    class IQStream;
-    class IQFrontEnd;
-    namespace gui { class Menu; }
-    namespace flog { void info(const char* fmt, ...); void warn(const char* fmt, ...); }
-    namespace core { struct Args { const char* s() const; }; extern Args args; }
-    namespace sigpath { extern IQFrontEnd* iqFrontEnd; }
-}
-
-// Module macro - defined by SDR++ module system
-#ifndef SDRPP_MOD_INFO
-#define SDRPP_MOD_INFO struct SDRPP_ModuleInfo
-#endif
-#ifndef MOD_EXPORT
-#define MOD_EXPORT __declspec(dllexport)
-#endif
-
+#include "MeshtasticDecoder.h"
 #include <string>
 #include <memory>
-#include "MeshtasticDecoder.h"
 
-class MeshtasticPlugin : public sdrpp::ModuleManager::Instance {
+// Forward declare SDR++ types to avoid including SDR++ headers
+namespace sdrpp {
+    class ModuleManager;
+    class Module;
+    class GUI;
+    class Source;
+}
+
+// SDR++ plugin API macros
+#ifdef _WIN32
+    #define SDRPP_EXPORT __declspec(dllexport)
+#else
+    #define SDRPP_EXPORT __attribute__((visibility("default")))
+#endif
+
+// Module info macro (simplified for portable release)
+#define SDRPP_MOD_INFO(name, version, description) \
+    extern "C" SDRPP_EXPORT const char* SDRPP_MODULE_NAME = name; \
+    extern "C" SDRPP_EXPORT const char* SDRPP_MODULE_VERSION = version; \
+    extern "C" SDRPP_EXPORT const char* SDRPP_MODULE_DESCRIPTION = description;
+
+// Plugin class using forward declarations
+class MeshtasticPlugin {
 public:
-    MeshtasticPlugin(std::string name);
-    ~MeshtasticPlugin();
+    MeshtasticPlugin(sdrpp::ModuleManager* manager, const std::string& configPath);
+    virtual ~MeshtasticPlugin();
 
-    void postInit() override;
-    void enable() override;
-    void disable() override;
-    bool isEnabled() override;
+    // Module interface
+    virtual void postInit() {}
+    virtual void enable() { enabled = true; }
+    virtual void disable() { enabled = false; }
+    virtual bool isEnabled() const { return enabled; }
+    virtual const char* getName() const { return "Meshtastic"; }
+    virtual const char* getVersion() const { return "1.0.0"; }
+    virtual const char* getDescription() const { return "Meshtastic protocol decoder/decryptor"; }
 
-    // IQ stream processing
-    void processIQStream();
-
-private:
-    std::string name;
-    bool enabled = true;
-    std::unique_ptr<MeshtasticDecoder> decoder;
-    sdrpp::IQStream* iqStream = nullptr;
-    sdrpp::IQFrontEnd* iqFrontEnd = nullptr;
-    sdrpp::ConfigManager* config = nullptr;
+    // Process IQ data from SDR++
+    void processIQ(const std::complex<float>* iq, size_t count, double sampleRate);
 
     // GUI
-    void drawMenu();
-    static void menuHandler(void* ctx);
+    void drawGUI();
+    void drawSettings();
 
-    // Configuration persistence
+    // Configuration
     void loadConfig();
     void saveConfig();
 
-    int selectedChannel = -1;
+    // Statistics
+    uint64_t getPacketsReceived() const;
+    uint64_t getPacketsDecoded() const;
+    uint64_t getPacketsDecrypted() const;
 
-    // Friend to allow C-style exports
-    friend MeshtasticPlugin* createMeshtasticPlugin(std::string name);
-    friend void destroyMeshtasticPlugin(MeshtasticPlugin* plugin);
+private:
+    sdrpp::ModuleManager* moduleManager = nullptr;
+    std::string configPath;
+    bool enabled = false;
+
+    // Decoder
+    std::unique_ptr<MeshtasticDecoder::MeshtasticDecoder> decoder;
+
+    // GUI state
+    bool showWindow = true;
+    bool showSettingsWindow = false;
+    int selectedChannel = -1;
+    char pskInput[256] = "";
+    char channelNameInput[128] = "";
+    bool useAES256 = false;
+    int spreadingFactor = 7;
+    int bandwidth = 125000;
+    int codingRate = 5;
+    int preambleLength = 8;
+    uint8_t syncWord = 0x34;
+    bool crcEnabled = true;
+    bool implicitHeader = false;
+    bool iqInverted = false;
+    double centerFrequency = 915000000.0;
+    double sampleRate = 1000000.0;
+
+    // Statistics for display
+    uint64_t lastPacketsReceived = 0;
+    uint64_t lastPacketsDecoded = 0;
+    uint64_t lastPacketsDecrypted = 0;
 };
 
-// C-style factory functions for SDR++ module system
+// C API exports for SDR++ plugin system
 extern "C" {
-    MOD_EXPORT sdrpp::ModuleManager::Instance* createMeshtasticPlugin(std::string name);
-    MOD_EXPORT void destroyMeshtasticPlugin(sdrpp::ModuleManager::Instance* instance);
+    SDRPP_EXPORT void* SDRPP_MODULE_CREATE_INSTANCE(sdrpp::ModuleManager* manager, const char* configPath);
+    SDRPP_EXPORT void SDRPP_MODULE_DELETE_INSTANCE(void* instance);
+    SDRPP_EXPORT void SDRPP_MODULE_INIT();
+    SDRPP_EXPORT void SDRPP_MODULE_END();
 }
+
+SDRPP_MOD_INFO("Meshtastic", "1.0.0", "Meshtastic protocol decoder/decryptor plugin for SDR++")
