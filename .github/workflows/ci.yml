@@ -178,11 +178,12 @@ jobs:
 
           echo "=== Finding extracted directory ==="
           find sdrpp_install -maxdepth 1 -type d
-          # Fix: use parentheses for proper -o precedence
-          SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d \( -name "*SDRPlusPlus*" -o -name "*sdrpp*" \) | head -1)
+          # First, try to find the actual SDR++ subdirectory (exclude parent sdrpp_install)
+          SDRPP_DIR=$(find sdrpp_install -mindepth 1 -maxdepth 1 -type d \( -name "*SDRPlusPlus*" -o -name "*sdrpp*" \) | head -1)
 
           if [ -z "$SDRPP_DIR" ]; then
-            SDRPP_DIR=$(find sdrpp_install -maxdepth 1 -type d | grep -v "^sdrpp_install$" | head -1)
+            # Fallback: any subdirectory of sdrpp_install that's not the parent itself
+            SDRPP_DIR=$(find sdrpp_install -mindepth 1 -maxdepth 1 -type d | head -1)
           fi
 
           if [ -z "$SDRPP_DIR" ]; then
