@@ -145,23 +145,25 @@ jobs:
           set -eu
           set -x
 
-          # Use fixed URL for nightly release to avoid API rate limits
-          ASSET_URL="https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/sdrpp_linux_x64.tar.gz"
+          # Use fixed URL for nightly release - Ubuntu noble (24.04) .deb package
+          ASSET_URL="https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/sdrpp_ubuntu_noble_amd64.deb"
 
           echo "=== Downloading SDR++ from: $ASSET_URL ==="
-          curl -L -o sdrpp_linux.tar.gz "$ASSET_URL"
+          curl -L -o sdrpp_linux.deb "$ASSET_URL"
 
-          echo "=== Extracting ==="
-          tar -xzf sdrpp_linux.tar.gz -C sdrpp_install
+          echo "=== Extracting .deb package ==="
+          mkdir -p sdrpp_install
+          dpkg -x sdrpp_linux.deb sdrpp_install
 
           echo "=== Finding extracted directory ==="
           find sdrpp_install -maxdepth 1 -type d
-          # First, try to find the actual SDR++ subdirectory (exclude parent sdrpp_install)
+          # The .deb extracts to usr/bin, usr/lib, usr/include etc.
+          # Find the actual SDR++ directory structure
           SDRPP_DIR=$(find sdrpp_install -mindepth 1 -maxdepth 1 -type d \( -name "*SDRPlusPlus*" -o -name "*sdrpp*" \) | head -1)
 
           if [ -z "$SDRPP_DIR" ]; then
-            # Fallback: any subdirectory of sdrpp_install that's not the parent itself
-            SDRPP_DIR=$(find sdrpp_install -mindepth 1 -maxdepth 1 -type d | head -1)
+            # .deb extracts to usr/ - use the install prefix
+            SDRPP_DIR=$(pwd)/sdrpp_install/usr
           fi
 
           if [ -z "$SDRPP_DIR" ]; then
@@ -283,8 +285,8 @@ jobs:
           set -eu
           set -x
 
-          # Use fixed URL for nightly release to avoid API rate limits
-          ASSET_URL="https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/sdrpp_macos_x64.zip"
+          # Use fixed URL for nightly release - macOS Intel (x64) zip
+          ASSET_URL="https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/sdrpp_macos_intel.zip"
 
           echo "=== Downloading SDR++ from: $ASSET_URL ==="
           curl -L -o sdrpp_macos.zip "$ASSET_URL"
