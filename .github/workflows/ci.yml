@@ -56,35 +56,19 @@ jobs:
           brew install cmake ninja protobuf cryptopp abseil fmt spdlog nlohmann-json volk liquid-dsp pkg-config git
 
       # =========================================================================
-      # WINDOWS: Install vcpkg for plugin deps, use portable SDR++ release
+      # WINDOWS: Use vcpkg action with caching for fast dependency installation
       # =========================================================================
       - name: Setup vcpkg (Windows)
         if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          set -eu
-          set -x
-
-          echo "=== Installing vcpkg ==="
-          if [ -d "C:/vcpkg" ]; then
-            echo "vcpkg directory exists, removing..."
-            rm -rf C:/vcpkg
-          fi
-          git clone https://github.com/microsoft/vcpkg.git C:/vcpkg
-          cd C:/vcpkg
-          ./bootstrap-vcpkg.bat
-
-          echo "=== Installing plugin dependencies via vcpkg ==="
-          ./vcpkg install \
-            protobuf \
-            cryptopp \
-            abseil \
-            fmt \
-            spdlog \
-            nlohmann-json \
-            --triplet x64-windows
-
-          echo "VCPKG_ROOT=C:/vcpkg" >> $GITHUB_ENV
+        uses: microsoft/vcpkg@v2
+        with:
+          vcpkgDirectory: 'C:/vcpkg'
+          vcpkgTriplet: 'x64-windows'
+          vcpkgGitCommitId: '2024.10.15'
+          runVcpkgInstall: true
+          vcpkgArguments: 'protobuf cryptopp abseil fmt spdlog nlohmann-json'
+          vcpkgArgumentsForce: ''
+          vcpkgCover: 'false'
 
       # =========================================================================
       # Build SDR++ from source (Linux/macOS) - use system packages
@@ -312,7 +296,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DSDRPP_CORE_ROOT="$SDRPP_CORE_ROOT" \
             -DCMAKE_INSTALL_PREFIX=./install \
-            -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=x64-windows
 
       - name: Build
