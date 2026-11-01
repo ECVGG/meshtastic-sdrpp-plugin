@@ -8,6 +8,7 @@
     "fmt",
     "spdlog",
     "nlohmann-json",
-    "glfw3"
+    "glfw3",
+    "gtest"
   ]
 }
