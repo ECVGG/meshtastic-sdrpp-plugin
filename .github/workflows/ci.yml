@@ -77,33 +77,25 @@ jobs:
           set -x
 
           echo "=== Checking vcpkg cache ==="
-          # Use a known working vcpkg commit from 2024
-          VCPKG_COMMIT="e9c1b2c8f7d6a5b4c3d2e1f0a9b8c7d6e5f4a3b2"
 
           # Try to restore vcpkg from cache
           if [ -d "C:/vcpkg" ]; then
-            echo "vcpkg directory exists, checking version..."
+            echo "vcpkg directory exists from cache, checking..."
             cd C:/vcpkg
             CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
-            if [ "$CURRENT_COMMIT" = "$VCPKG_COMMIT" ]; then
-              echo "vcpkg already at correct commit, skipping bootstrap"
-            else
-              echo "vcpkg commit mismatch, re-cloning..."
-              cd /
-              rm -rf C:/vcpkg
-            fi
+            echo "Cached vcpkg commit: $CURRENT_COMMIT"
           fi
 
           if [ ! -d "C:/vcpkg" ]; then
             echo "=== Installing vcpkg ==="
             git clone https://github.com/microsoft/vcpkg.git C:/vcpkg
             cd C:/vcpkg
-            git checkout "$VCPKG_COMMIT"
             ./bootstrap-vcpkg.bat -disableMetrics
+          else
+            cd C:/vcpkg
           fi
 
           echo "=== Installing plugin dependencies via vcpkg (using binary packages) ==="
-          cd C:/vcpkg
           ./vcpkg install \
             protobuf \
             cryptopp \
