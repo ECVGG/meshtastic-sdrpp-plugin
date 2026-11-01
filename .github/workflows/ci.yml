@@ -41,7 +41,7 @@ jobs:
           sudo apt-get install -y \
             build-essential cmake ninja-build \
             libprotobuf-dev protobuf-compiler \
-            libcryptopp-dev \
+            libcrypto++-dev \
             libabsl-dev libfmt-dev libspdlog-dev nlohmann-json3-dev \
             libvolk-dev \
             pkg-config git
@@ -67,7 +67,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install cmake ninja protobuf cryptopp abseil fmt spdlog nlohmann-json volk pkg-config git
+          brew install cmake ninja protobuf cryptopp abseil fmt spdlog nlohmann-json volk pkg-config git automake autoconf libtool
 
       - name: Build liquid-dsp from source (macOS)
         if: runner.os == 'macOS'
@@ -125,7 +125,9 @@ jobs:
           # Convert Windows path to Unix-style for bash
           VCPKG_BINARY_CACHE="${RUNNER_TEMP//\\//}/vcpkg-binaries"
           mkdir -p "$VCPKG_BINARY_CACHE"
-          ./vcpkg install \
+          # Must run from repo root where vcpkg.json is located
+          cd "${GITHUB_WORKSPACE}"
+          C:/vcpkg/vcpkg install \
             --triplet x64-windows \
             --binarysource=clear;files,"$VCPKG_BINARY_CACHE",readwrite \
             --x-wait-for-lock \
@@ -134,9 +136,9 @@ jobs:
           echo "VCPKG_ROOT=C:/vcpkg" >> $GITHUB_ENV
 
       # =========================================================================
-      # Build SDR++ from source (Linux/macOS) - use system packages
+      # All platforms: Use portable SDR++ releases
       # =========================================================================
-      - name: Build SDR++ from source (Linux)
+      - name: Setup SDR++ portable (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
