@@ -70,7 +70,7 @@ jobs:
             echo "vcpkg directory exists, removing..."
             rm -rf C:/vcpkg
           fi
-          git clone --depth 1 https://github.com/microsoft/vcpkg.git C:/vcpkg
+          git clone https://github.com/microsoft/vcpkg.git C:/vcpkg
           cd C:/vcpkg
           ./bootstrap-vcpkg.bat
 
