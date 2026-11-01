@@ -184,6 +184,11 @@ jobs:
           echo "=== Creating minimal SDRPlusPlusConfig.cmake ==="
           mkdir -p "$SDRPP_ROOT/lib/cmake/SDRPlusPlus"
 
+          # Debug: list the portable release structure
+          echo "=== Portable release structure ==="
+          find "$SDRPP_ROOT" -type f -name "*.h" | head -20
+          ls -la "$SDRPP_ROOT"
+
           # Find include directory - portable release has include/ or Include/ at root
           INCLUDE_DIR=""
           if [ -d "$SDRPP_ROOT/include" ]; then
@@ -194,8 +199,9 @@ jobs:
             # Fallback: search for any .h files
             INCLUDE_DIR=$(find "$SDRPP_ROOT" -name "*.h" -type f | head -1 | xargs dirname 2>/dev/null || echo "")
           fi
-          if [ -z "$INCLUDE_DIR" ]; then
-            INCLUDE_DIR="$SDRPP_ROOT/include"
+          # Only set INCLUDE_DIR if it actually exists
+          if [ -n "$INCLUDE_DIR" ] && [ ! -d "$INCLUDE_DIR" ]; then
+            INCLUDE_DIR=""
           fi
 
           # Find lib directory - portable release has .lib/.dll at root or in lib/
@@ -221,14 +227,24 @@ jobs:
           echo '# Generated from portable release - no separate libraries, use INTERFACE target' >> "$CFG"
           echo '' >> "$CFG"
           echo 'set(SDRPlusPlus_VERSION "1.0.0")' >> "$CFG"
-          echo 'set(SDRPlusPlus_INCLUDE_DIRS "${CMAKE_CURRENT_LIST_DIR}/../../../include")' >> "$CFG"
+
+          if [ -n "$INCLUDE_DIR" ]; then
+            # Compute relative path from config location to include dir
+            REL_INCLUDE="${CMAKE_CURRENT_LIST_DIR}/../../../include"
+            echo "set(SDRPlusPlus_INCLUDE_DIRS \"${REL_INCLUDE}\")" >> "$CFG"
+          else
+            echo "# No include directory found in portable release" >> "$CFG"
+            echo "set(SDRPlusPlus_INCLUDE_DIRS \"\")" >> "$CFG"
+          fi
           echo '' >> "$CFG"
           echo '# Create INTERFACE target for SDR++ core (portable release has no separate library)' >> "$CFG"
           echo 'if(NOT TARGET SDRPlusPlus::SDRPlusPlus)' >> "$CFG"
           echo '  add_library(SDRPlusPlus::SDRPlusPlus INTERFACE IMPORTED)' >> "$CFG"
-          echo '  set_target_properties(SDRPlusPlus::SDRPlusPlus PROPERTIES' >> "$CFG"
-          echo '    INTERFACE_INCLUDE_DIRECTORIES "${SDRPlusPlus_INCLUDE_DIRS}"' >> "$CFG"
-          echo '  )' >> "$CFG"
+          if [ -n "$INCLUDE_DIR" ]; then
+            echo '  set_target_properties(SDRPlusPlus::SDRPlusPlus PROPERTIES' >> "$CFG"
+            echo '    INTERFACE_INCLUDE_DIRECTORIES "${SDRPlusPlus_INCLUDE_DIRS}"' >> "$CFG"
+            echo '  )' >> "$CFG"
+          fi
           echo 'endif()' >> "$CFG"
           echo '' >> "$CFG"
           echo '# ImGui is typically bundled with SDR++ - try to find it' >> "$CFG"
