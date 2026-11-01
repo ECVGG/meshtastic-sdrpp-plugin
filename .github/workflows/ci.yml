@@ -56,19 +56,64 @@ jobs:
           brew install cmake ninja protobuf cryptopp abseil fmt spdlog nlohmann-json volk liquid-dsp pkg-config git
 
       # =========================================================================
-      # WINDOWS: Use vcpkg action with caching for fast dependency installation
+      # WINDOWS: Install vcpkg with caching and binary packages for speed
       # =========================================================================
+      - name: Cache vcpkg
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:/vcpkg
+            ${{ runner.temp }}/vcpkg-binaries
+          key: vcpkg-${{ hashFiles('vcpkg.json') }}-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            vcpkg-${{ hashFiles('vcpkg.json') }}-${{ runner.os }}-
+
       - name: Setup vcpkg (Windows)
         if: runner.os == 'Windows'
-        uses: microsoft/vcpkg@v1
-        with:
-          vcpkgDirectory: 'C:/vcpkg'
-          vcpkgTriplet: 'x64-windows'
-          vcpkgGitCommitId: '2024.10.15'
-          runVcpkgInstall: true
-          vcpkgArguments: 'protobuf cryptopp abseil fmt spdlog nlohmann-json'
-          vcpkgArgumentsForce: ''
-          vcpkgCover: 'false'
+        shell: bash
+        run: |
+          set -eu
+          set -x
+
+          echo "=== Checking vcpkg cache ==="
+          VCPKG_COMMIT="2024.10.15"
+
+          # Try to restore vcpkg from cache
+          if [ -d "C:/vcpkg" ]; then
+            echo "vcpkg directory exists, checking version..."
+            cd C:/vcpkg
+            CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+            if [ "$CURRENT_COMMIT" = "$VCPKG_COMMIT" ]; then
+              echo "vcpkg already at correct commit, skipping bootstrap"
+            else
+              echo "vcpkg commit mismatch, re-cloning..."
+              cd /
+              rm -rf C:/vcpkg
+            fi
+          fi
+
+          if [ ! -d "C:/vcpkg" ]; then
+            echo "=== Installing vcpkg ==="
+            git clone --depth 1 --branch "$VCPKG_COMMIT" https://github.com/microsoft/vcpkg.git C:/vcpkg
+            cd C:/vcpkg
+            ./bootstrap-vcpkg.bat -disableMetrics
+          fi
+
+          echo "=== Installing plugin dependencies via vcpkg (using binary packages) ==="
+          cd C:/vcpkg
+          ./vcpkg install \
+            protobuf \
+            cryptopp \
+            abseil \
+            fmt \
+            spdlog \
+            nlohmann-json \
+            --triplet x64-windows \
+            --binarysource=clear;files,${{ runner.temp }}/vcpkg-binaries,readwrite \
+            --x-wait-for-lock
+
+          echo "VCPKG_ROOT=C:/vcpkg" >> $GITHUB_ENV
 
       # =========================================================================
       # Build SDR++ from source (Linux/macOS) - use system packages
