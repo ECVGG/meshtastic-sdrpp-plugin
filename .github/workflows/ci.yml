@@ -153,22 +153,8 @@ jobs:
           set -eu
           set -x
 
-          echo "=== Fetching latest SDR++ release info ==="
-          RELEASE_JSON=$(curl -s https://api.github.com/repos/AlexandreRouma/SDRPlusPlus/releases/latest)
-
-          echo "=== Finding Windows asset with jq ==="
-          ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("sdrpp_windows_x64\\.zip$")) | .browser_download_url' | head -1)
-
-          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
-            echo "Primary pattern failed, trying fallback..."
-            ASSET_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("windows.*x64.*\\.zip$")) | .browser_download_url' | head -1)
-          fi
-
-          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
-            echo "ERROR: No Windows asset found in release"
-            echo "$RELEASE_JSON" | jq -r '.assets[].name'
-            exit 1
-          fi
+          # Use fixed URL for nightly release to avoid API rate limits
+          ASSET_URL="https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/sdrpp_windows_x64.zip"
 
           echo "=== Downloading SDR++ from: $ASSET_URL ==="
           curl -L -o sdrpp_windows.zip "$ASSET_URL"
