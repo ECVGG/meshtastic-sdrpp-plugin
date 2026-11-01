@@ -60,7 +60,7 @@ jobs:
       # =========================================================================
       - name: Setup vcpkg (Windows)
         if: runner.os == 'Windows'
-        uses: microsoft/vcpkg@v2
+        uses: microsoft/vcpkg@v1
         with:
           vcpkgDirectory: 'C:/vcpkg'
           vcpkgTriplet: 'x64-windows'
