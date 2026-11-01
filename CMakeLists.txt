@@ -350,11 +350,17 @@ include(CPack)
 # =============================================================================
 # Testing
 # =============================================================================
-enable_testing()
+option(BUILD_TESTS "Build unit tests" OFF)
 
-# Add unit tests if test sources exist
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
-    add_subdirectory(tests)
+if(BUILD_TESTS)
+    enable_testing()
+
+    # Add unit tests if test sources exist
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
+        add_subdirectory(tests)
+    endif()
+else()
+    message(STATUS "Tests disabled (set BUILD_TESTS=ON to enable)")
 endif()
 
 # =============================================================================
