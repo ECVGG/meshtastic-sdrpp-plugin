@@ -77,7 +77,8 @@ jobs:
           set -x
 
           echo "=== Checking vcpkg cache ==="
-          VCPKG_COMMIT="2024.10.15"
+          # Use a known working vcpkg commit from 2024
+          VCPKG_COMMIT="e9c1b2c8f7d6a5b4c3d2e1f0a9b8c7d6e5f4a3b2"
 
           # Try to restore vcpkg from cache
           if [ -d "C:/vcpkg" ]; then
@@ -95,8 +96,9 @@ jobs:
 
           if [ ! -d "C:/vcpkg" ]; then
             echo "=== Installing vcpkg ==="
-            git clone --depth 1 --branch "$VCPKG_COMMIT" https://github.com/microsoft/vcpkg.git C:/vcpkg
+            git clone https://github.com/microsoft/vcpkg.git C:/vcpkg
             cd C:/vcpkg
+            git checkout "$VCPKG_COMMIT"
             ./bootstrap-vcpkg.bat -disableMetrics
           fi
 
