@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <memory>
 #include <chrono>
+#include <google/protobuf/message.h>
 
 // Forward declaration for nlohmann::json (include in cpp)
 namespace nlohmann {
@@ -17,20 +18,6 @@ namespace nlohmann {
 }
 
 namespace MeshtasticDecoder {
-
-// LoRa modem configuration
-struct LoRaModemConfig {
-    int spreadingFactor = 7;        // SF7-SF12
-    int bandwidth = 125000;         // Hz (125k, 250k, 500k)
-    int codingRate = 5;             // 4/5, 4/6, 4/7, 4/8
-    int preambleLength = 8;         // symbols
-    uint8_t syncWord = 0x12;        // 0x12 for LoRaWAN, 0x34 for Meshtastic
-    bool crcEnabled = true;
-    bool implicitHeader = false;
-    bool iqInverted = false;
-    double centerFrequency = 915000000.0; // Hz
-    double sampleRate = 1000000.0;  // Hz
-};
 
 // Channel information
 struct ChannelInfo {
@@ -67,21 +54,8 @@ struct FragmentBuffer {
     std::unordered_map<uint32_t, std::vector<uint8_t>> fragments;
 };
 
-// Decoded packet with all metadata
-struct DecodedPacket {
-    MeshHeader header;
-    std::unique_ptr<google::protobuf::Message> protoPacket;
-    std::string textMessage;
-    std::string fromName;
-    std::string toName;
-    std::string decodedText;
-    bool decrypted = false;
-    bool valid = false;
-    std::string error;
-    double timestamp = 0;
-    int rssi = 0;
-    float snr = 0.0f;
-};
+// Decoded packet with all metadata (alias to avoid duplication)
+using DecodedPacket = MeshtasticProtocol::DecodedMeshtasticPacket;
 
 class MeshtasticDecoder {
 public:
@@ -152,7 +126,7 @@ private:
 
     // Internal methods
     bool processRawPacketInternal(const std::vector<uint8_t>& rawPacket, DecodedPacket& decoded);
-    bool decodeMeshHeader(const uint8_t* data, size_t len, MeshHeader& header);
+    bool decodeMeshHeader(const uint8_t* data, size_t len, MeshtasticProtocol::MeshHeader& header);
     bool validateCRC(const uint8_t* data, size_t len);
     bool tryDecryptWithAllChannels(google::protobuf::Message& packet, ChannelInfo& usedChannel);
 

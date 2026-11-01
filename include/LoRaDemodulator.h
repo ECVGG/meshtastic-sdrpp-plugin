@@ -3,6 +3,7 @@
 #include <complex>
 #include <vector>
 #include <memory>
+#include <cstdint>
 
 using Complex = std::complex<float>;
 

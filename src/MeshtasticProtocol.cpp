@@ -4,7 +4,7 @@
 
 namespace MeshtasticProtocol {
 
-bool MeshtasticProtocolParser::parsePacket(const uint8_t* data, size_t len, meshtastic::MeshPacket& packet) {
+bool MeshtasticProtocolParser::parsePacket(const uint8_t* data, size_t len, google::protobuf::Message& packet) {
     if (!data || len == 0) return false;
 
     try {
@@ -14,14 +14,18 @@ bool MeshtasticProtocolParser::parsePacket(const uint8_t* data, size_t len, mesh
     }
 }
 
-bool MeshtasticProtocolParser::extractPayload(const meshtastic::MeshPacket& packet, DecodedMeshtasticPacket& decoded) {
+bool MeshtasticProtocolParser::extractPayload(const google::protobuf::Message& packet, DecodedMeshtasticPacket& decoded) {
+    // Cast to MeshPacket to access fields
+    const auto* meshPacket = dynamic_cast<const meshtastic::MeshPacket*>(&packet);
+    if (!meshPacket) return false;
+
     // Check port number and extract appropriate payload
-    uint32_t port = packet.portnum();
+    uint32_t port = meshPacket->portnum();
 
     switch (static_cast<MSPortNum>(port)) {
         case MSPortNum::TEXT_MESSAGE_APP: {
-            if (packet.has_data()) {
-                const auto& data = packet.data();
+            if (meshPacket->has_data()) {
+                const auto& data = meshPacket->data();
                 if (data.has_text()) {
                     decoded.textMessage = data.text();
                 }
@@ -29,8 +33,8 @@ bool MeshtasticProtocolParser::extractPayload(const meshtastic::MeshPacket& pack
             break;
         }
         case MSPortNum::POSITION_APP: {
-            if (packet.has_position()) {
-                const auto& pos = packet.position();
+            if (meshPacket->has_position()) {
+                const auto& pos = meshPacket->position();
                 decoded.textMessage = "Position: lat=" + std::to_string(pos.latitude()) +
                                      " lon=" + std::to_string(pos.longitude()) +
                                      " alt=" + std::to_string(pos.altitude());
@@ -38,32 +42,32 @@ bool MeshtasticProtocolParser::extractPayload(const meshtastic::MeshPacket& pack
             break;
         }
         case MSPortNum::NODEINFO_APP: {
-            if (packet.has_nodeinfo()) {
-                const auto& info = packet.nodeinfo();
+            if (meshPacket->has_nodeinfo()) {
+                const auto& info = meshPacket->nodeinfo();
                 decoded.textMessage = "NodeInfo: " + info.long_name() + " (" + info.short_name() + ")";
             }
             break;
         }
         case MSPortNum::TELEMETRY_APP: {
-            if (packet.has_telemetry()) {
+            if (meshPacket->has_telemetry()) {
                 decoded.textMessage = "Telemetry data";
             }
             break;
         }
         case MSPortNum::ROUTING_APP: {
-            if (packet.has_routing()) {
+            if (meshPacket->has_routing()) {
                 decoded.textMessage = "Routing data";
             }
             break;
         }
         case MSPortNum::ADMIN_APP: {
-            if (packet.has_admin()) {
+            if (meshPacket->has_admin()) {
                 decoded.textMessage = "Admin message";
             }
             break;
         }
         case MSPortNum::NEIGHBORINFO_APP: {
-            if (packet.has_neighborinfo()) {
+            if (meshPacket->has_neighborinfo()) {
                 decoded.textMessage = "Neighbor info";
             }
             break;

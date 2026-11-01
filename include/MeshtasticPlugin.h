@@ -3,6 +3,7 @@
 #include "MeshtasticDecoder.h"
 #include <string>
 #include <memory>
+#include <complex>
 
 // Forward declare SDR++ types to avoid including SDR++ headers
 namespace sdrpp {

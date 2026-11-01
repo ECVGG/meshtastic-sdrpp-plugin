@@ -5,13 +5,13 @@
 #include <string>
 #include <memory>
 #include <array>
+#include <google/protobuf/message.h>
 
 namespace MeshtasticProtocol {
 
 // Meshtastic protocol constants
 constexpr uint32_t BROADCAST_ADDR = 0xFFFFFFFF;
 constexpr uint8_t MESHTASTIC_FLAG = 0x94;
-constexpr size_t MESH_HEADER_SIZE = 12; // flag(1) + dest(4) + src(4) + port(1) + len(1) + crc(2) = 13? Wait...
 
 // Port numbers from Meshtastic specification
 enum class MSPortNum : uint8_t {
@@ -143,6 +143,22 @@ public:
         // bytes 8-11 are zeros (counter)
         return nonce;
     }
+};
+
+// Protocol parser
+class MeshtasticProtocolParser {
+public:
+    // Parse raw packet bytes into MeshPacket protobuf
+    static bool parsePacket(const uint8_t* data, size_t len, google::protobuf::Message& packet);
+
+    // Extract human-readable payload from MeshPacket
+    static bool extractPayload(const google::protobuf::Message& packet, DecodedMeshtasticPacket& decoded);
+
+    // Convert port number to string
+    static std::string portNumToString(uint8_t port);
+
+    // Calculate CRC16-CCITT
+    static uint16_t calculateCRC(const uint8_t* data, size_t len);
 };
 
 } // namespace MeshtasticProtocol

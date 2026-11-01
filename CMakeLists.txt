@@ -122,6 +122,18 @@ else()
     endif()
 endif()
 
+# Check for ImGui (bundled with SDR++ but headers may not be in portable release)
+find_path(IMGUI_INCLUDE_DIR imgui.h
+    PATHS ${SDRPlusPlus_INCLUDE_DIRS} ${CMAKE_INSTALL_PREFIX}/include ${CMAKE_PREFIX_PATH}/include
+)
+if(IMGUI_INCLUDE_DIR)
+    message(STATUS "Found ImGui at: ${IMGUI_INCLUDE_DIR}")
+    set(HAVE_IMGUI 1)
+else()
+    message(STATUS "ImGui headers not found - GUI will be disabled")
+    set(HAVE_IMGUI 0)
+endif()
+
 # Threads
 find_package(Threads REQUIRED)
 
@@ -219,6 +231,14 @@ if(HAVE_JSON AND NLOHMANN_JSON_INCLUDE_DIR)
     target_include_directories(MeshtasticPlugin PRIVATE ${NLOHMANN_JSON_INCLUDE_DIR})
 endif()
 
+# Add ImGui include if found
+if(HAVE_IMGUI)
+    target_include_directories(MeshtasticPlugin PRIVATE ${IMGUI_INCLUDE_DIR})
+    target_compile_definitions(MeshtasticPlugin PRIVATE HAS_IMGUI=1)
+else()
+    target_compile_definitions(MeshtasticPlugin PRIVATE HAS_IMGUI=0)
+endif()
+
 # Compile definitions
 target_compile_definitions(MeshtasticPlugin PRIVATE
     MESHTASTIC_PLUGIN_VERSION="${MESHTASTIC_PLUGIN_VERSION}"
@@ -246,7 +266,7 @@ if(HAVE_SPDLOG)
     target_link_libraries(MeshtasticPlugin PRIVATE spdlog::spdlog)
 endif()
 
-if(HAVE_JSON AND nlohmann_json_FOUND)
+if(nlohmann_json_FOUND)
     target_link_libraries(MeshtasticPlugin PRIVATE nlohmann_json::nlohmann_json)
 endif()
 

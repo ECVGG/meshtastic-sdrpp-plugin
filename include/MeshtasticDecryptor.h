@@ -5,13 +5,7 @@
 #include <string>
 #include <cstdint>
 #include <memory>
-
-// Forward declare protobuf message
-namespace google {
-    namespace protobuf {
-        class Message;
-    }
-}
+#include <google/protobuf/message.h>
 
 namespace MeshtasticDecryptor {
 

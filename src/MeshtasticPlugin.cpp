@@ -1,11 +1,51 @@
 #include "MeshtasticPlugin.h"
 #include "MeshtasticDecoder.h"
-#include <imgui.h>
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <ctime>
+
+// Try to include ImGui - it's bundled with SDR++ but headers may not be in portable release
+// We'll use a compile-time check
+#if defined(__has_include)
+#  if __has_include(<imgui.h>)
+#    define HAS_IMGUI 1
+#    include <imgui.h>
+#  endif
+#endif
+
+#ifndef HAS_IMGUI
+#  define HAS_IMGUI 0
+// Minimal stub types for when ImGui is not available
+namespace ImGui {
+    struct ImVec2 { float x, y; ImVec2(float x_, float y_) : x(x_), y(y_) {} };
+    enum ImGuiCond_ { ImGuiCond_FirstUseEver = 1 };
+    enum ImGuiTreeNodeFlags_ { ImGuiTreeNodeFlags_DefaultOpen = 1 };
+    enum ImGuiDataType_ { ImGuiDataType_U8 = 1 };
+    inline void SetNextWindowSize(ImVec2, ImGuiCond_) {}
+    inline bool Begin(const char*, bool*) { return false; }
+    inline void End() {}
+    inline void Text(const char*, ...) {}
+    inline void Separator() {}
+    inline void Spacing() {}
+    inline bool CollapsingHeader(const char*, int) { return false; }
+    inline bool Checkbox(const char*, bool*) { return false; }
+    inline void SameLine() {}
+    inline bool Button(const char*) { return false; }
+    inline void PushID(int) {}
+    inline void PopID() {}
+    inline bool Combo(const char*, int*, const char*) { return false; }
+    inline bool InputInt(const char*, int*) { return false; }
+    inline bool InputScalar(const char*, ImGuiDataType_, void*) { return false; }
+    inline bool InputText(const char*, char*, size_t) { return false; }
+    inline bool InputDouble(const char*, double*, double, double, const char*) { return false; }
+    inline void Columns(int, const char*) {}
+    inline void NextColumn() {}
+    inline void Strftime(char*, size_t, const char*, const std::tm*) {}
+    inline std::tm* localtime(const time_t*) { return nullptr; }
+}
 
 using json = nlohmann::json;
 
@@ -27,6 +67,7 @@ void MeshtasticPlugin::processIQ(const std::complex<float>* iq, size_t count, do
 }
 
 void MeshtasticPlugin::drawGUI() {
+#if HAS_IMGUI
     if (!showWindow) return;
 
     ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_FirstUseEver);
@@ -174,10 +215,38 @@ void MeshtasticPlugin::drawGUI() {
     }
 
     ImGui::End();
+#else
+    // ImGui not available - GUI disabled
+    (void)showWindow;
+    (void)showSettingsWindow;
+    (void)selectedChannel;
+    (void)pskInput;
+    (void)channelNameInput;
+    (void)useAES256;
+    (void)spreadingFactor;
+    (void)bandwidth;
+    (void)codingRate;
+    (void)preambleLength;
+    (void)syncWord;
+    (void)crcEnabled;
+    (void)implicitHeader;
+    (void)iqInverted;
+    (void)centerFrequency;
+    (void)sampleRate;
+#endif
 }
 
 void MeshtasticPlugin::drawSettings() {
+#if HAS_IMGUI
     // Settings window (could be separate)
+    if (showSettingsWindow) {
+        ImGui::Begin("Meshtastic Settings", &showSettingsWindow);
+        ImGui::Text("Settings panel - to be implemented");
+        ImGui::End();
+    }
+#else
+    (void)showSettingsWindow;
+#endif
 }
 
 void MeshtasticPlugin::loadConfig() {

@@ -1,4 +1,5 @@
 #include "LoRaDemodulator.h"
+#include "MeshtasticProtocol.h"
 #include <algorithm>
 #include <cmath>
 #include <complex>
@@ -90,6 +91,6 @@ std::vector<uint8_t> LoRaDemodulator::deinterleaveAndDecode(const std::vector<ui
 bool LoRaDemodulator::checkCRC(const std::vector<uint8_t>& data) {
     if (data.size() < 2) return false;
     uint16_t expectedCRC = (uint16_t)data[data.size() - 2] | ((uint16_t)data[data.size() - 1] << 8);
-    uint16_t calcCRC = MeshHeader::calculateCRC(data.data(), data.size() - 2);
+    uint16_t calcCRC = MeshtasticProtocol::MeshHeader::calculateCRC(data.data(), data.size() - 2);
     return calcCRC == expectedCRC;
 }
