@@ -180,6 +180,11 @@ jobs:
           echo "SDR++ extracted to: $SDRPP_ROOT"
           ls -la "$SDRPP_ROOT"
 
+          echo "=== Debug: Check for include directory ==="
+          ls -la "$SDRPP_ROOT/include" 2>/dev/null || echo "No include directory at SDRPP_ROOT/include"
+          ls -la "$SDRPP_ROOT/Include" 2>/dev/null || echo "No Include directory at SDRPP_ROOT/Include"
+          find "$SDRPP_ROOT" -name "*.h" -type f | head -5
+
           echo "=== Creating minimal SDRPlusPlusConfig.cmake ==="
           mkdir -p "$SDRPP_ROOT/lib/cmake/SDRPlusPlus"
 
@@ -192,11 +197,16 @@ jobs:
           INCLUDE_DIR=""
           if [ -d "$SDRPP_ROOT/include" ]; then
             INCLUDE_DIR="$SDRPP_ROOT/include"
+            echo "Found include at: $INCLUDE_DIR"
           elif [ -d "$SDRPP_ROOT/Include" ]; then
             INCLUDE_DIR="$SDRPP_ROOT/Include"
+            echo "Found Include at: $INCLUDE_DIR"
           else
             # Fallback: search for any .h files
             INCLUDE_DIR=$(find "$SDRPP_ROOT" -name "*.h" -type f | head -1 | xargs dirname 2>/dev/null || echo "")
+            if [ -n "$INCLUDE_DIR" ]; then
+              echo "Found include via find: $INCLUDE_DIR"
+            fi
           fi
           # Only set INCLUDE_DIR if it actually exists
           if [ -n "$INCLUDE_DIR" ] && [ ! -d "$INCLUDE_DIR" ]; then
@@ -207,11 +217,16 @@ jobs:
           LIB_DIR=""
           if [ -d "$SDRPP_ROOT/lib" ]; then
             LIB_DIR="$SDRPP_ROOT/lib"
+            echo "Found lib at: $LIB_DIR"
           elif [ -d "$SDRPP_ROOT/bin" ]; then
             LIB_DIR="$SDRPP_ROOT/bin"
+            echo "Found bin at: $LIB_DIR"
           else
             # Fallback: search for .so files
             LIB_DIR=$(find "$SDRPP_ROOT" -name "*.so" | head -1 | xargs dirname 2>/dev/null || echo "")
+            if [ -n "$LIB_DIR" ]; then
+              echo "Found lib via find: $LIB_DIR"
+            fi
           fi
           if [ -z "$LIB_DIR" ]; then
             LIB_DIR="$SDRPP_ROOT"
@@ -318,6 +333,11 @@ jobs:
           echo "SDR++ extracted to: $SDRPP_ROOT"
           ls -la "$SDRPP_ROOT"
 
+          echo "=== Debug: Check .app bundle structure ==="
+          find "$SDRPP_ROOT" -name "*.h" -type f | head -10
+          find "$SDRPP_ROOT" -path "*/Headers" -type d | head -5
+          find "$SDRPP_ROOT" -path "*/Frameworks/*" -name "*.dylib" | head -5
+
           echo "=== Creating minimal SDRPlusPlusConfig.cmake ==="
           mkdir -p "$SDRPP_ROOT/lib/cmake/SDRPlusPlus"
 
@@ -330,14 +350,22 @@ jobs:
           INCLUDE_DIR=""
           if [ -d "$SDRPP_ROOT/include" ]; then
             INCLUDE_DIR="$SDRPP_ROOT/include"
+            echo "Found include at: $INCLUDE_DIR"
           elif [ -d "$SDRPP_ROOT/Include" ]; then
             INCLUDE_DIR="$SDRPP_ROOT/Include"
+            echo "Found Include at: $INCLUDE_DIR"
           else
             # macOS .app bundle: search for framework headers
             INCLUDE_DIR=$(find "$SDRPP_ROOT" -path "*/Frameworks/*" -name "*.h" -type f | head -1 | xargs dirname 2>/dev/null || echo "")
+            if [ -n "$INCLUDE_DIR" ]; then
+              echo "Found include via Frameworks find: $INCLUDE_DIR"
+            fi
             # Also check for .framework/Headers
             if [ -z "$INCLUDE_DIR" ] || [ ! -d "$INCLUDE_DIR" ]; then
               INCLUDE_DIR=$(find "$SDRPP_ROOT" -path "*/Headers" -type d | head -1 2>/dev/null || echo "")
+              if [ -n "$INCLUDE_DIR" ]; then
+                echo "Found include via Headers find: $INCLUDE_DIR"
+              fi
             fi
           fi
           # Only set INCLUDE_DIR if it actually exists
@@ -349,11 +377,16 @@ jobs:
           LIB_DIR=""
           if [ -d "$SDRPP_ROOT/lib" ]; then
             LIB_DIR="$SDRPP_ROOT/lib"
+            echo "Found lib at: $LIB_DIR"
           elif [ -d "$SDRPP_ROOT/bin" ]; then
             LIB_DIR="$SDRPP_ROOT/bin"
+            echo "Found bin at: $LIB_DIR"
           else
             # macOS .app bundle: search for .dylib or .framework
             LIB_DIR=$(find "$SDRPP_ROOT" -path "*/Frameworks/*" -name "*.dylib" -o -path "*/Frameworks/*.framework" | head -1 | xargs dirname 2>/dev/null || echo "")
+            if [ -n "$LIB_DIR" ]; then
+              echo "Found lib via Frameworks find: $LIB_DIR"
+            fi
           fi
           if [ -z "$LIB_DIR" ]; then
             LIB_DIR="$SDRPP_ROOT"
@@ -582,7 +615,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DSDRPP_CORE_ROOT="$SDRPP_CORE_ROOT" \
             -DCMAKE_INSTALL_PREFIX=./install \
-            -DProtobuf_ROOT=/usr/local
+            -DProtobuf_ROOT=/opt/homebrew
 
       - name: Configure CMake (Windows)
         if: runner.os == 'Windows'

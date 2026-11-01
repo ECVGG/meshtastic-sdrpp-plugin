@@ -71,13 +71,59 @@ set(CRYPTOPP_STATIC ON)
 set(BUILD_SHARED_LIBS OFF)
 
 # Protobuf - Required for Meshtastic protocol definitions
+# Add hints for Homebrew on macOS (both Intel /usr/local and Apple Silicon /opt/homebrew)
+set(Protobuf_ROOT_HINTS
+    /usr/local
+    /opt/homebrew
+    ${CMAKE_PREFIX_PATH}
+)
 find_package(Protobuf REQUIRED)
+if(NOT Protobuf_FOUND)
+    # Try manual find as fallback
+    find_path(PROTOBUF_INCLUDE_DIR google/protobuf/message.h
+        PATHS /usr/include /usr/local/include /opt/homebrew/include ${CMAKE_PREFIX_PATH}/include
+    )
+    find_library(PROTOBUF_LIBRARY protobuf
+        PATHS /usr/lib /usr/local/lib /opt/homebrew/lib ${CMAKE_PREFIX_PATH}/lib
+    )
+    find_program(PROTOBUF_PROTOC protoc
+        PATHS /usr/bin /usr/local/bin /opt/homebrew/bin ${CMAKE_PREFIX_PATH}/bin
+    )
+    if(PROTOBUF_INCLUDE_DIR AND PROTOBUF_LIBRARY AND PROTOBUF_PROTOC)
+        set(Protobuf_FOUND TRUE)
+        set(Protobuf_INCLUDE_DIRS ${PROTOBUF_INCLUDE_DIR})
+        set(Protobuf_LIBRARIES ${PROTOBUF_LIBRARY})
+        set(Protobuf_PROTOC_EXECUTABLE ${PROTOBUF_PROTOC})
+        message(STATUS "Found Protobuf manually: ${PROTOBUF_INCLUDE_DIR}, ${PROTOBUF_LIBRARY}")
+    else()
+        message(FATAL_ERROR "Could not find Protobuf library, headers, and protoc")
+    endif()
+endif()
 message(STATUS "Found Protobuf: ${Protobuf_VERSION}")
 message(STATUS "Protobuf compiler: ${Protobuf_PROTOC_EXECUTABLE}")
 
 # Crypto++ - Required for AES-CTR decryption
-find_package(Cryptopp REQUIRED)
-message(STATUS "Found Crypto++: ${CRYPTOPP_VERSION}")
+# Try find_package first, fall back to manual find for systems without CMake config (e.g., Ubuntu)
+find_package(Cryptopp QUIET)
+if(NOT Cryptopp_FOUND)
+    message(STATUS "Cryptopp config not found, trying manual find...")
+    find_path(CRYPTOPP_INCLUDE_DIR cryptopp/cryptlib.h
+        PATHS /usr/include /usr/local/include /opt/homebrew/include ${CMAKE_PREFIX_PATH}/include
+    )
+    find_library(CRYPTOPP_LIBRARY cryptopp
+        PATHS /usr/lib /usr/local/lib /opt/homebrew/lib ${CMAKE_PREFIX_PATH}/lib
+    )
+    if(CRYPTOPP_INCLUDE_DIR AND CRYPTOPP_LIBRARY)
+        set(Cryptopp_FOUND TRUE)
+        set(Cryptopp_INCLUDE_DIRS ${CRYPTOPP_INCLUDE_DIR})
+        set(Cryptopp_LIBRARIES ${CRYPTOPP_LIBRARY})
+        message(STATUS "Found Crypto++ manually: ${CRYPTOPP_INCLUDE_DIR}, ${CRYPTOPP_LIBRARY}")
+    else()
+        message(FATAL_ERROR "Could not find Crypto++ library and headers")
+    endif()
+else()
+    message(STATUS "Found Crypto++: ${CRYPTOPP_VERSION}")
+endif()
 
 # Try to find other dependencies for static linking
 find_package(absl QUIET)
