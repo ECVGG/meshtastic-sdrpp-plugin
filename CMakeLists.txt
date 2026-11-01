@@ -79,27 +79,7 @@ message(STATUS "Protobuf compiler: ${Protobuf_PROTOC_EXECUTABLE}")
 find_package(Cryptopp REQUIRED)
 message(STATUS "Found Crypto++: ${CRYPTOPP_VERSION}")
 
-# liquid-dsp - Required for demodulation (optional, for future use)
-find_package(liquid-dsp QUIET)
-if(liquid-dsp_FOUND)
-    message(STATUS "Found liquid-dsp: ${LIQUID_DSP_VERSION}")
-    set(HAVE_LIQUID_DSP 1)
-else()
-    message(WARNING "liquid-dsp not found - some demodulation features may be unavailable")
-    set(HAVE_LIQUID_DSP 0)
-endif()
-
-# Try to find volk, absl, fmt, spdlog, nlohmann_json for static linking
-find_package(Volk QUIET)
-if(Volk_FOUND)
-    message(STATUS "Found Volk: ${Volk_VERSION}")
-    set(HAVE_VOLK 1)
-else()
-    message(WARNING "Volk not found - using built-in FFT")
-    set(HAVE_VOLK 0)
-endif()
-
-# Try to find other dependencies
+# Try to find other dependencies for static linking
 find_package(absl QUIET)
 if(absl_FOUND)
     message(STATUS "Found absl")
@@ -228,10 +208,6 @@ target_include_directories(MeshtasticPlugin PRIVATE
     ${CRYPTOPP_INCLUDE_DIRS}
 )
 
-if(HAVE_LIQUID_DSP)
-    target_include_directories(MeshtasticPlugin PRIVATE ${LIQUID_DSP_INCLUDE_DIRS})
-endif()
-
 # Compile definitions
 target_compile_definitions(MeshtasticPlugin PRIVATE
     MESHTASTIC_PLUGIN_VERSION="${MESHTASTIC_PLUGIN_VERSION}"
@@ -245,14 +221,6 @@ target_link_libraries(MeshtasticPlugin PRIVATE
     ${CRYPTOPP_LIBRARIES}
     Threads::Threads
 )
-
-if(HAVE_LIQUID_DSP)
-    target_link_libraries(MeshtasticPlugin PRIVATE ${LIQUID_DSP_LIBRARIES})
-endif()
-
-if(HAVE_VOLK)
-    target_link_libraries(MeshtasticPlugin PRIVATE ${Volk_LIBRARIES})
-endif()
 
 if(HAVE_ABSL)
     target_link_libraries(MeshtasticPlugin PRIVATE absl::base absl::strings absl::flags absl::flags_parse)
@@ -407,7 +375,6 @@ message(STATUS "Version: ${MESHTASTIC_PLUGIN_VERSION}")
 message(STATUS "SDR++ Version: ${SDRPlusPlus_VERSION}")
 message(STATUS "Protobuf Version: ${Protobuf_VERSION}")
 message(STATUS "Crypto++ Version: ${CRYPTOPP_VERSION}")
-message(STATUS "liquid-dsp: ${HAVE_LIQUID_DSP}")
 message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Install Prefix: ${CMAKE_INSTALL_PREFIX}")
 message(STATUS "Plugin Install Dir: ${SDRPlusPlus_PLUGIN_INSTALL_DIR}")

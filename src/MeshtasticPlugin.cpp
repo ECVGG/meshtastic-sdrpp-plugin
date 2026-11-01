@@ -1,28 +1,29 @@
 #include "MeshtasticPlugin.h"
-#include "MeshtasticDecoder.h"
-#include <module.h>
-#include <imgui.h>
-#include <gui/gui.h>
-#include <gui/smgui.h>
-#include <signal_path/signal_path.h>
-#include <core.h>
-#include <config.h>
-#include <utils/flog.h>
-#include <utils/event.h>
+#include "MeshtasticProtocol.h"
 #include <nlohmann/json.hpp>
+#include <imgui.h>
 
+// Use sdrpp namespace for forward-declared types
+using namespace sdrpp;
 using nlohmann::json;
+
+// Global config manager instance
+static ConfigManager g_config;
 
 MeshtasticPlugin::MeshtasticPlugin(std::string name) {
     this->name = name;
     decoder = std::make_unique<MeshtasticDecoder>();
 
     // Register GUI menu entry
-    gui::menu.registerEntry(name, menuHandler, this);
+    if (gui::Menu::instance()) {
+        gui::Menu::instance()->registerEntry(name, menuHandler, this);
+    }
 }
 
 MeshtasticPlugin::~MeshtasticPlugin() {
-    gui::menu.removeEntry(name);
+    if (gui::Menu::instance()) {
+        gui::Menu::instance()->removeEntry(name);
+    }
 }
 
 void MeshtasticPlugin::postInit() {
@@ -60,11 +61,11 @@ void MeshtasticPlugin::menuHandler(void* ctx) {
 
 void MeshtasticPlugin::drawMenu() {
     // Main window title
-    SmGui::TextColored(ImVec4(0.3f, 0.8f, 0.3f, 1.0f), "Meshtastic Decoder");
-    SmGui::Separator();
+    ImGui::TextColored(ImVec4(0.3f, 0.8f, 0.3f, 1.0f), "Meshtastic Decoder");
+    ImGui::Separator();
 
     // Statistics
-    SmGui::Text("Packets: RX=%llu Decoded=%llu Decrypted=%llu Failed=%llu",
+    ImGui::Text("Packets: RX=%llu Decoded=%llu Decrypted=%llu Failed=%llu",
                 decoder->getPacketsReceived(),
                 decoder->getPacketsDecoded(),
                 decoder->getPacketsDecrypted(),
@@ -74,53 +75,53 @@ void MeshtasticPlugin::drawMenu() {
     if (ImGui::CollapsingHeader("LoRa Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
         auto& config = decoder->getLoRaConfig();
 
-        SmGui::LeftLabel("Center Frequency");
-        SmGui::FillWidth();
-        if (SmGui::InputDouble("##freq", &config.centerFrequency, 100000, 1000000, "%.3f MHz")) {
+        ImGui::Text("Center Frequency");
+        ImGui::SameLine(150);
+        if (ImGui::InputDouble("##freq", &config.centerFrequency, 100000, 1000000, "%.3f MHz")) {
             decoder->setLoRaConfig(config);
         }
 
-        SmGui::LeftLabel("Spreading Factor");
-        SmGui::FillWidth();
-        if (SmGui::Combo("##sf", &config.spreadingFactor, "SF7\0SF8\0SF9\0SF10\0SF11\0SF12\0")) {
+        ImGui::Text("Spreading Factor");
+        ImGui::SameLine(150);
+        if (ImGui::Combo("##sf", &config.spreadingFactor, "SF7\0SF8\0SF9\0SF10\0SF11\0SF12\0")) {
             decoder->setLoRaConfig(config);
         }
 
-        SmGui::LeftLabel("Bandwidth");
-        SmGui::FillWidth();
+        ImGui::Text("Bandwidth");
+        ImGui::SameLine(150);
         int bwIdx = 0;
         if (config.bandwidth == 125000) bwIdx = 0;
         else if (config.bandwidth == 250000) bwIdx = 1;
         else if (config.bandwidth == 500000) bwIdx = 2;
-        if (SmGui::Combo("##bw", &bwIdx, "125 kHz\0250 kHz\0500 kHz\0")) {
+        if (ImGui::Combo("##bw", &bwIdx, "125 kHz\0250 kHz\0500 kHz\0")) {
             config.bandwidth = (bwIdx == 0) ? 125000 : (bwIdx == 1) ? 250000 : 500000;
             decoder->setLoRaConfig(config);
         }
 
-        SmGui::LeftLabel("Coding Rate");
-        SmGui::FillWidth();
-        if (SmGui::Combo("##cr", &config.codingRate, "4/5\04/6\04/7\04/8\0")) {
+        ImGui::Text("Coding Rate");
+        ImGui::SameLine(150);
+        if (ImGui::Combo("##cr", &config.codingRate, "4/5\04/6\04/7\04/8\0")) {
             config.codingRate = config.codingRate + 5;  // 0->5, 1->6, etc.
             decoder->setLoRaConfig(config);
         }
 
-        SmGui::LeftLabel("Sync Word");
-        SmGui::FillWidth();
-        if (SmGui::Combo("##sync", &config.syncWord, "Public (0x12)\0Private (0x2B)\0")) {
+        ImGui::Text("Sync Word");
+        ImGui::SameLine(150);
+        if (ImGui::Combo("##sync", &config.syncWord, "Public (0x12)\0Private (0x2B)\0")) {
             config.syncWord = (config.syncWord == 0) ? 0x12 : 0x2B;
             decoder->setLoRaConfig(config);
         }
 
-        SmGui::LeftLabel("Preamble Length");
-        SmGui::FillWidth();
-        if (SmGui::InputInt("##preamble", &config.preambleLength, 1, 10)) {
+        ImGui::Text("Preamble Length");
+        ImGui::SameLine(150);
+        if (ImGui::InputInt("##preamble", &config.preambleLength, 1, 10)) {
             config.preambleLength = std::clamp(config.preambleLength, 6, 65535);
             decoder->setLoRaConfig(config);
         }
 
-        SmGui::LeftLabel("Sample Rate");
-        SmGui::FillWidth();
-        if (SmGui::InputDouble("##sr", &config.sampleRate, 100000, 1000000, "%.0f")) {
+        ImGui::Text("Sample Rate");
+        ImGui::SameLine(150);
+        if (ImGui::InputDouble("##sr", &config.sampleRate, 100000, 1000000, "%.0f")) {
             decoder->setLoRaConfig(config);
         }
     }
@@ -135,35 +136,35 @@ void MeshtasticPlugin::drawMenu() {
             if (!ch.enabled) header += " (disabled)";
 
             if (ImGui::TreeNode(header.c_str())) {
-                SmGui::LeftLabel("Name");
-                SmGui::FillWidth();
+                ImGui::Text("Name");
+                ImGui::SameLine(150);
                 char nameBuf[64];
                 strncpy(nameBuf, ch.name.c_str(), sizeof(nameBuf) - 1);
                 nameBuf[sizeof(nameBuf) - 1] = 0;
-                if (SmGui::InputText("##name", nameBuf, sizeof(nameBuf))) {
+                if (ImGui::InputText("##name", nameBuf, sizeof(nameBuf))) {
                     // Update name - need to cast away const
                 }
 
-                SmGui::LeftLabel("PSK (Base64)");
-                SmGui::FillWidth();
+                ImGui::Text("PSK (Base64)");
+                ImGui::SameLine(150);
                 char pskBuf[256];
                 strncpy(pskBuf, ch.pskBase64.c_str(), sizeof(pskBuf) - 1);
                 pskBuf[sizeof(pskBuf) - 1] = 0;
-                if (SmGui::InputText("##psk", pskBuf, sizeof(pskBuf))) {
+                if (ImGui::InputText("##psk", pskBuf, sizeof(pskBuf))) {
                     decoder->updateChannelKey(static_cast<int>(i), pskBuf);
                 }
 
-                SmGui::LeftLabel("AES-256");
-                SmGui::FillWidth();
+                ImGui::Text("AES-256");
+                ImGui::SameLine(150);
                 bool useAES256 = ch.useAES256;
-                if (SmGui::Checkbox("##aes256", &useAES256)) {
+                if (ImGui::Checkbox("##aes256", &useAES256)) {
                     // Would need update method
                 }
 
-                SmGui::LeftLabel("Enabled");
-                SmGui::FillWidth();
+                ImGui::Text("Enabled");
+                ImGui::SameLine(150);
                 bool enabled = ch.enabled;
-                if (SmGui::Checkbox("##enabled", &enabled)) {
+                if (ImGui::Checkbox("##enabled", &enabled)) {
                     // Would need update method
                 }
 
@@ -171,9 +172,9 @@ void MeshtasticPlugin::drawMenu() {
             }
         }
 
-        SmGui::Separator();
+        ImGui::Separator();
 
-        if (SmGui::Button("Add Channel")) {
+        if (ImGui::Button("Add Channel")) {
             MeshtasticDecoder::ChannelInfo newCh;
             newCh.name = "Channel " + std::to_string(channels.size());
             newCh.enabled = true;
@@ -181,9 +182,9 @@ void MeshtasticPlugin::drawMenu() {
             decoder->addChannel(newCh);
         }
 
-        SmGui::SameLine();
+        ImGui::SameLine();
 
-        if (SmGui::Button("Remove Selected") && selectedChannel >= 0 && selectedChannel < static_cast<int>(channels.size())) {
+        if (ImGui::Button("Remove Selected") && selectedChannel >= 0 && selectedChannel < static_cast<int>(channels.size())) {
             decoder->removeChannel(selectedChannel);
         }
     }
@@ -191,15 +192,15 @@ void MeshtasticPlugin::drawMenu() {
     // Packet Display
     if (ImGui::CollapsingHeader("Received Packets", ImGuiTreeNodeFlags_DefaultOpen)) {
         // Filter options
-        SmGui::LeftLabel("Filter");
-        SmGui::FillWidth();
+        ImGui::Text("Filter");
+        ImGui::SameLine(150);
         static char filterBuf[128] = "";
-        SmGui::InputText("##filter", filterBuf, sizeof(filterBuf));
+        ImGui::InputText("##filter", filterBuf, sizeof(filterBuf));
 
-        SmGui::LeftLabel("Show Decrypted Only");
-        SmGui::FillWidth();
+        ImGui::Text("Show Decrypted Only");
+        ImGui::SameLine(150);
         static bool showDecryptedOnly = false;
-        SmGui::Checkbox("##decrypted", &showDecryptedOnly);
+        ImGui::Checkbox("##decrypted", &showDecryptedOnly);
 
         ImGui::Separator();
 
@@ -320,15 +321,15 @@ void MeshtasticPlugin::drawMenu() {
 
     // Configuration persistence
     if (ImGui::CollapsingHeader("Configuration")) {
-        if (SmGui::Button("Save Config")) {
+        if (ImGui::Button("Save Config")) {
             saveConfig();
         }
-        SmGui::SameLine();
-        if (SmGui::Button("Load Config")) {
+        ImGui::SameLine();
+        if (ImGui::Button("Load Config")) {
             loadConfig();
         }
-        SmGui::SameLine();
-        if (SmGui::Button("Clear History")) {
+        ImGui::SameLine();
+        if (ImGui::Button("Clear History")) {
             // Would need clear method
         }
     }
@@ -339,20 +340,21 @@ void MeshtasticPlugin::loadConfig() {
     def["lora"] = json({});
     def["channels"] = json::array();
 
-    config.setPath(core::args["root"].s() + "/meshtastic_config.json");
-    config.load(def);
-    config.enableAutoSave();
+    config = &g_config;
+    config->setPath(core::args["root"].s() + "/meshtastic_config.json");
+    config->load(def);
+    config->enableAutoSave();
 
-    if (config.conf.contains("lora") || config.conf.contains("channels")) {
-        decoder->loadConfig(config.conf);
+    if (config->conf.contains("lora") || config->conf.contains("channels")) {
+        decoder->loadConfig(config->conf);
     }
 }
 
 void MeshtasticPlugin::saveConfig() {
-    config.acquire();
-    config.conf = decoder->saveConfig();
-    config.release(true);
-    config.save();
+    config->acquire();
+    config->conf = decoder->saveConfig();
+    config->release(true);
+    config->save();
     flog::info("[Meshtastic] Configuration saved");
 }
 
@@ -387,15 +389,13 @@ SDRPP_MOD_INFO{
     /* Max instances    */ 1
 };
 
-ConfigManager config;
-
 MOD_EXPORT void _INIT_() {
     json def = json({});
     def["lora"] = json({});
     def["channels"] = json::array();
-    config.setPath(core::args["root"].s() + "/meshtastic_config.json");
-    config.load(def);
-    config.enableAutoSave();
+    g_config.setPath(core::args["root"].s() + "/meshtastic_config.json");
+    g_config.load(def);
+    g_config.enableAutoSave();
     flog::info("[Meshtastic] Module initialized");
 }
 
@@ -408,7 +408,7 @@ MOD_EXPORT void _DELETE_INSTANCE_(ModuleManager::Instance* instance) {
 }
 
 MOD_EXPORT void _END_() {
-    config.disableAutoSave();
-    config.save();
+    g_config.disableAutoSave();
+    g_config.save();
     flog::info("[Meshtastic] Module shutdown");
 }

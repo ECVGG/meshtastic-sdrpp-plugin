@@ -10,5 +10,6 @@
     "nlohmann-json",
     "glfw3",
     "gtest"
-  ]
+  ],
+  "builtin-baseline": "5d7c0d3f9e7c3b7f3e1d4b8c2a7f1e9d3b4c5d6e"
 }

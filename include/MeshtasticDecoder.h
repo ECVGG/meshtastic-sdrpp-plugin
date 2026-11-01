@@ -10,9 +10,6 @@
 #include <deque>
 #include <map>
 
-#include <dsp/stream.h>
-#include <dsp/complex.h>
-
 // Forward declarations
 namespace meshtastic {
 class MeshPacket;
@@ -25,6 +22,12 @@ class Admin;
 class NeighborInfo;
 }
 
+// Complex number type for IQ samples (replaces dsp::complex_t)
+struct Complex {
+    float re = 0;
+    float im = 0;
+};
+
 // LoRa modulation parameters
 struct LoRaModemConfig {
     int spreadingFactor = 7;      // SF7-SF12
@@ -36,6 +39,7 @@ struct LoRaModemConfig {
     bool implicitHeader = false;
     bool iqInverted = false;
     double centerFrequency = 915000000.0;
+    double sampleRate = 1000000.0; // IQ sample rate
 };
 
 // Meshtastic on-air packet header (unencrypted)
@@ -101,7 +105,7 @@ public:
     void configure(const LoRaModemConfig& config);
 
     // Process IQ samples and return detected packets
-    std::vector<std::vector<uint8_t>> process(const dsp::complex_t* iq, size_t count);
+    std::vector<std::vector<uint8_t>> process(const Complex* iq, size_t count);
 
     // Get/set config
     const LoRaModemConfig& getConfig() const { return config; }
@@ -118,7 +122,7 @@ private:
 
     // Internal state for packet detection
     struct {
-        std::vector<dsp::complex_t> buffer;
+        std::vector<Complex> buffer;
         std::vector<float> preambleCorr;
         size_t sampleCount = 0;
         bool inPacket = false;
@@ -134,6 +138,7 @@ public:
 
     // Configure LoRa parameters
     void setLoRaConfig(const LoRaModemConfig& config);
+    const LoRaModemConfig& getLoRaConfig() const { return loraConfig; }
 
     // Add/remove channels with encryption keys
     void addChannel(const ChannelInfo& channel);
@@ -142,7 +147,7 @@ public:
     const std::vector<ChannelInfo>& getChannels() const { return channels; }
 
     // Process IQ samples - main entry point
-    std::vector<DecodedPacket> processIQ(const dsp::complex_t* iq, size_t count, double sampleRate);
+    std::vector<DecodedPacket> processIQ(const Complex* iq, size_t count, double sampleRate);
 
     // Process a single raw packet (for testing or alternative input)
     DecodedPacket processRawPacket(const std::vector<uint8_t>& rawPacket, int rssi = 0, float snr = 0);

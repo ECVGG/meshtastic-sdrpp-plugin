@@ -3,14 +3,18 @@
 #include <cmath>
 #include <cstring>
 #include <complex>
-#include <fftw3.h>
+#include <iostream>
 
 // Try to include liquid-dsp if available
 #ifdef HAVE_LIQUID_DSP
 #include <liquid/liquid.h>
 #endif
 
-#include <utils/flog.h>
+// Simple logging replacement for flog
+#define flog_info(fmt, ...) std::cout << "[Meshtastic] " << fmt << std::endl
+#define flog_warn(fmt, ...) std::cerr << "[Meshtastic] WARNING: " << fmt << std::endl
+#define flog_error(fmt, ...) std::cerr << "[Meshtastic] ERROR: " << fmt << std::endl
+#define flog_debug(fmt, ...) std::cout << "[Meshtastic] DEBUG: " << fmt << std::endl
 
 LoRaDemodulator::LoRaDemodulator() {
     // Constructor
@@ -31,7 +35,7 @@ bool LoRaDemodulator::init(const LoRaModemConfig& config) {
     this->config = config;
 
     if (!LoRaUtils::validateConfig(config)) {
-        flog::error("[Meshtastic] Invalid LoRa configuration");
+        flog_error("[Meshtastic] Invalid LoRa configuration");
         return false;
     }
 
@@ -39,7 +43,7 @@ bool LoRaDemodulator::init(const LoRaModemConfig& config) {
 #ifdef HAVE_LIQUID_DSP
     if (initLiquidDSP()) {
         backend = Backend::LIQUID_DSP;
-        flog::info("[Meshtastic] Using liquid-dsp backend for LoRa demodulation");
+        flog_info("[Meshtastic] Using liquid-dsp backend for LoRa demodulation");
         initialized = true;
         return true;
     }
@@ -48,12 +52,12 @@ bool LoRaDemodulator::init(const LoRaModemConfig& config) {
     // Fall back to built-in implementation
     if (initBuiltin()) {
         backend = Backend::BUILTIN;
-        flog::info("[Meshtastic] Using built-in LoRa demodulation (limited functionality)");
+        flog_info("[Meshtastic] Using built-in LoRa demodulation (limited functionality)");
         initialized = true;
         return true;
     }
 
-    flog::error("[Meshtastic] Failed to initialize LoRa demodulator");
+    flog_error("[Meshtastic] Failed to initialize LoRa demodulator");
     return false;
 }
 
@@ -69,13 +73,13 @@ void LoRaDemodulator::configure(const LoRaModemConfig& config) {
     }
 }
 
-std::vector<LoRaPacket> LoRaDemodulator::process(const dsp::complex_t* iq, size_t count) {
+std::vector<LoRaPacket> LoRaDemodulator::process(const Complex* iq, size_t count) {
     return process(iq, count, config.sampleRate);
 }
 
-std::vector<LoRaPacket> LoRaDemodulator::process(const dsp::complex_t* iq, size_t count, double sampleRate) {
+std::vector<LoRaPacket> LoRaDemodulator::process(const Complex* iq, size_t count, double sampleRate) {
     if (!initialized) {
-        flog::warn("[Meshtastic] Demodulator not initialized");
+        flog_warn("[Meshtastic] Demodulator not initialized");
         return {};
     }
 
@@ -90,7 +94,7 @@ std::vector<LoRaPacket> LoRaDemodulator::process(const dsp::complex_t* iq, size_
         case Backend::BUILTIN:
             return processBuiltin(iq, count);
         default:
-            flog::error("[Meshtastic] No valid backend");
+            flog_error("[Meshtastic] No valid backend");
             return {};
     }
 }
@@ -163,7 +167,7 @@ bool LoRaDemodulator::initBuiltin() {
         lfsr = ((lfsr << 1) | feedback) & 0x01FF;
     }
 
-    flog::info("[Meshtastic] Built-in LoRa demod initialized: SF{}, BW{}kHz, {:.0f}ksps, {} samps/sym",
+    flog_info("[Meshtastic] Built-in LoRa demod initialized: SF{}, BW{}kHz, {:.0f}ksps, {} samps/sym",
                config.spreadingFactor, config.bandwidth / 1000,
                config.sampleRate / 1000, builtinState->samplesPerSymbol);
 
@@ -190,7 +194,7 @@ void LoRaDemodulator::generateChirpTemplate() {
     }
 }
 
-std::vector<LoRaPacket> LoRaDemodulator::processBuiltin(const dsp::complex_t* iq, size_t count) {
+std::vector<LoRaPacket> LoRaDemodulator::processBuiltin(const Complex* iq, size_t count) {
     std::vector<LoRaPacket> packets;
     if (!builtinState || count == 0) return packets;
 
@@ -239,7 +243,7 @@ std::vector<LoRaPacket> LoRaDemodulator::processBuiltin(const dsp::complex_t* iq
             state.inPreamble = true;
             state.preambleStart = maxIdx;
             state.preambleDetections = 1;
-            flog::debug("[Meshtastic] Preamble detected at sample {}, corr={:.3f}", maxIdx, maxCorr);
+            flog_debug("[Meshtastic] Preamble detected at sample {}, corr={:.3f}", maxIdx, maxCorr);
         } else if (state.inPreamble) {
             state.preambleDetections++;
             if (state.preambleDetections >= config.preambleLength) {
@@ -286,7 +290,7 @@ std::vector<LoRaPacket> LoRaDemodulator::processBuiltin(const dsp::complex_t* iq
     return packets;
 }
 
-bool LoRaDemodulator::decodePHYHeader(const dsp::complex_t* iq, size_t startIdx, LoRaPacket& packet) {
+bool LoRaDemodulator::decodePHYHeader(const Complex* iq, size_t startIdx, LoRaPacket& packet) {
     // Simplified PHY header decoding
     // In explicit header mode, header contains: payload length (1 byte), CRC (1 byte), coding rate (1 byte)
     // For Meshtastic, we typically use implicit header mode with known parameters
@@ -299,13 +303,13 @@ bool LoRaDemodulator::decodePHYHeader(const dsp::complex_t* iq, size_t startIdx,
 
     // Estimate expected payload size based on typical Meshtastic packets
     // Meshtastic packets are typically 20-250 bytes
-    state.expectedPayloadLen = 64;  // Default, will be adjusted
+    builtinState->expectedPayloadLen = 64;  // Default, will be adjusted
 
-    state.headerDecoded = true;
+    builtinState->headerDecoded = true;
     return true;
 }
 
-bool LoRaDemodulator::decodePayload(const dsp::complex_t* iq, size_t startIdx, LoRaPacket& packet) {
+bool LoRaDemodulator::decodePayload(const Complex* iq, size_t startIdx, LoRaPacket& packet) {
     if (!builtinState) return false;
 
     auto& state = *builtinState;
@@ -381,7 +385,7 @@ uint16_t LoRaDemodulator::calculateCRC(const uint8_t* data, size_t len) {
     return crc;
 }
 
-void LoRaDemodulator::estimateSignalQuality(const dsp::complex_t* iq, size_t count, float& snr, int& rssi) {
+void LoRaDemodulator::estimateSignalQuality(const Complex* iq, size_t count, float& snr, int& rssi) {
     if (count == 0) return;
 
     // Calculate power
@@ -469,7 +473,7 @@ bool LoRaUtils::validateConfig(const LoRaModemConfig& config) {
     return true;
 }
 
-std::vector<LoRaPacket> LoRaDemodulator::processLiquidDSP(const dsp::complex_t* iq, size_t count) {
+std::vector<LoRaPacket> LoRaDemodulator::processLiquidDSP(const Complex* iq, size_t count) {
     // Placeholder - would use liquid-dsp's flexframe or custom LoRa modem
     // For now, fall back to built-in
     return processBuiltin(iq, count);

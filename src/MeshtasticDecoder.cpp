@@ -45,18 +45,22 @@ void MeshtasticDecoder::removeChannel(int index) {
     }
 }
 
-void MeshtasticDecoder::updateChannelKey(int index, const std::string& pskBase64) {
+void MeshtasticDecoder::updateChannelKey(int index, const std::string& pskBase64, bool useAES256) {
     std::lock_guard<std::mutex> lock(channelsMutex);
     if (index >= 0 && index < static_cast<int>(channels.size())) {
-        auto derivedKey = MeshtasticDecryptor::deriveKeyFromPSK(pskBase64, MeshtasticDecryptor::KeyType::AES128);
+        auto derivedKey = MeshtasticDecryptor::deriveKeyFromPSK(
+            pskBase64,
+            useAES256 ? MeshtasticDecryptor::KeyType::AES256 : MeshtasticDecryptor::KeyType::AES128
+        );
         if (derivedKey.size() >= 16) {
             std::copy(derivedKey.begin(), derivedKey.begin() + 16, channels[index].aesKey.begin());
             channels[index].pskBase64 = pskBase64;
+            channels[index].useAES256 = useAES256;
         }
     }
 }
 
-std::vector<DecodedPacket> MeshtasticDecoder::processIQ(const dsp::complex_t* iq, size_t count, double sampleRate) {
+std::vector<DecodedPacket> MeshtasticDecoder::processIQ(const Complex* iq, size_t count, double sampleRate) {
     std::vector<DecodedPacket> results;
 
     if (!loraDemod || !loraDemod->isInitialized()) {
@@ -124,8 +128,14 @@ bool MeshtasticDecoder::processRawPacketInternal(const std::vector<uint8_t>& raw
         packetsDecrypted++;
     }
 
-    // Extract payload
-    parser.extractPayload(packet, *reinterpret_cast<DecodedMeshtasticPacket*>(&decoded));
+    // Extract payload - use a DecodedMeshtasticPacket for extraction
+    DecodedMeshtasticPacket decodedProto;
+    decodedProto.header = header;
+    decodedProto.protoPacket = decoded.protoPacket;
+    if (parser.extractPayload(packet, decodedProto)) {
+        decoded.decodedText = decodedProto.textMessage;
+        // Copy other fields as needed
+    }
 
     // Update node database
     updateNodeDatabase(packet);
@@ -238,7 +248,7 @@ void MeshtasticDecoder::updateNodeDatabase(const meshtastic::MeshPacket& packet)
     node.lastSnr = 0;
 
     // Update node info if this is a NODEINFO packet
-    if (packet.portnum() == static_cast<uint32_t>(PortNum::NODEINFO_APP)) {
+    if (packet.portnum() == static_cast<uint32_t>(MSPortNum::NODEINFO_APP) && packet.has_nodeinfo()) {
         node.longName = packet.nodeinfo().long_name();
         node.shortName = packet.nodeinfo().short_name();
         node.hwModel = packet.nodeinfo().hw_model();
@@ -246,7 +256,7 @@ void MeshtasticDecoder::updateNodeDatabase(const meshtastic::MeshPacket& packet)
     }
 
     // Update position if available
-    if (packet.portnum() == static_cast<uint32_t>(PortNum::POSITION_APP)) {
+    if (packet.portnum() == static_cast<uint32_t>(MSPortNum::POSITION_APP) && packet.has_position()) {
         node.latitude = packet.position().latitude();
         node.longitude = packet.position().longitude();
         node.altitude = packet.position().altitude();
@@ -287,7 +297,11 @@ void MeshtasticDecoder::reassembleFragments(DecodedPacket& packet) {
         MeshtasticProtocolParser parser;
         if (parser.parsePacket(reassembled.data(), reassembled.size(), reassembledPacket)) {
             packet.protoPacket = std::make_unique<meshtastic::MeshPacket>(reassembledPacket);
-            parser.extractPayload(reassembledPacket, *reinterpret_cast<DecodedMeshtasticPacket*>(&packet));
+            DecodedMeshtasticPacket decodedProto;
+            decodedProto.header = packet.header;
+            decodedProto.protoPacket = packet.protoPacket;
+            parser.extractPayload(reassembledPacket, decodedProto);
+            packet.decodedText = decodedProto.textMessage;
         }
 
         // Clean up
@@ -299,7 +313,7 @@ void MeshtasticDecoder::displayPacket(DecodedPacket& packet) {
     if (packet.protoPacket) {
         // Generate from/to names
         packet.fromName = nodeIdToString(packet.header.source);
-        if (packet.header.destination == BROADCAST_ADDR) {
+        if (packet.header.destination == MeshtasticProtocol::BROADCAST_ADDR) {
             packet.toName = "BROADCAST";
         } else {
             packet.toName = nodeIdToString(packet.header.destination);
@@ -312,7 +326,7 @@ void MeshtasticDecoder::displayPacket(DecodedPacket& packet) {
             if (it != nodeDatabase.end() && !it->second.longName.empty()) {
                 packet.fromName = it->second.longName + " (" + packet.fromName + ")";
             }
-            if (packet.header.destination != BROADCAST_ADDR) {
+            if (packet.header.destination != MeshtasticProtocol::BROADCAST_ADDR) {
                 it = nodeDatabase.find(packet.header.destination);
                 if (it != nodeDatabase.end() && !it->second.longName.empty()) {
                     packet.toName = it->second.longName + " (" + packet.toName + ")";
@@ -321,7 +335,7 @@ void MeshtasticDecoder::displayPacket(DecodedPacket& packet) {
         }
 
         // Generate decoded text
-        if (packet.protoPacket->portnum() == static_cast<uint32_t>(PortNum::TEXT_MESSAGE_APP)) {
+        if (packet.protoPacket->portnum() == static_cast<uint32_t>(MSPortNum::TEXT_MESSAGE_APP) && packet.protoPacket->has_data()) {
             packet.decodedText = packet.protoPacket->data().text();
         } else {
             packet.decodedText = portNumToString(static_cast<uint8_t>(packet.protoPacket->portnum()));

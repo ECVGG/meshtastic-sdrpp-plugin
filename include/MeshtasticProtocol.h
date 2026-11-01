@@ -29,8 +29,8 @@ class RadioConfig;
 class SerialInterface;
 }
 
-// Port numbers (from Meshtastic specification)
-enum class PortNum : uint8_t {
+// Port numbers (from Meshtastic specification) - using local enum to avoid conflict with protobuf-generated meshtastic::PortNum
+enum class MSPortNum : uint8_t {
     UNSET = 0,
     TEXT_MESSAGE_APP = 1,
     POSITION_APP = 2,
@@ -140,7 +140,7 @@ struct DecodedMeshtasticPacket {
     std::string error;
 
     // Helper methods
-    PortNum getPortNum() const;
+    MSPortNum getPortNum() const;
     std::string getPortName() const;
     std::string getSummary() const;
 };
@@ -167,7 +167,7 @@ public:
         uint32_t id,
         uint8_t channel,
         uint8_t hopLimit,
-        PortNum portNum,
+        MSPortNum portNum,
         const uint8_t* payload,
         size_t payloadLen,
         bool wantAck = false,

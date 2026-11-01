@@ -28,34 +28,71 @@ bool MeshtasticProtocolParser::extractPayload(const meshtastic::MeshPacket& pack
     decoded.protoPacket = std::make_shared<MeshPacket>(packet);
 
     // Extract port number
-    PortNum port = static_cast<PortNum>(packet.portnum());
+    MSPortNum port = static_cast<MSPortNum>(packet.portnum());
 
     // Decode based on port number
+    // Check which field is set in the oneof payload
     switch (port) {
-        case PortNum::TEXT_MESSAGE_APP:
-            return parseDataPayload(packet.data(), decoded);
-        case PortNum::POSITION_APP:
-            return parsePositionPayload(packet.position(), decoded);
-        case PortNum::NODEINFO_APP:
-            return parseNodeInfoPayload(packet.nodeinfo(), decoded);
-        case PortNum::TELEMETRY_APP:
-            return parseTelemetryPayload(packet.telemetry(), decoded);
-        case PortNum::ROUTING_APP:
-            return parseRoutingPayload(packet.routing(), decoded);
-        case PortNum::ADMIN_APP:
-            return parseAdminPayload(packet.admin(), decoded);
-        case PortNum::NEIGHBORINFO_APP:
-            return parseNeighborInfoPayload(packet.neighborinfo(), decoded);
-        case PortNum::WAYPOINT_APP:
-            return parseWaypointPayload(packet.waypoint(), decoded);
-        case PortNum::AUDIO_APP:
-            return parseAudioPayload(packet.audio(), decoded);
-        case PortNum::DETECTION_SENSOR_APP:
-            return parseDetectionSensorPayload(packet.detectionsensor(), decoded);
-        case PortNum::REPLY_APP:
-            return parseReplyPayload(packet.reply(), decoded);
-        case PortNum::PAXCOUNTER_APP:
-            return parsePaxcountPayload(packet.paxcount(), decoded);
+        case MSPortNum::TEXT_MESSAGE_APP:
+            if (packet.has_data()) {
+                return parseDataPayload(packet.data(), decoded);
+            }
+            return false;
+        case MSPortNum::POSITION_APP:
+            if (packet.has_position()) {
+                return parsePositionPayload(packet.position(), decoded);
+            }
+            return false;
+        case MSPortNum::NODEINFO_APP:
+            if (packet.has_nodeinfo()) {
+                return parseNodeInfoPayload(packet.nodeinfo(), decoded);
+            }
+            return false;
+        case MSPortNum::TELEMETRY_APP:
+            if (packet.has_telemetry()) {
+                return parseTelemetryPayload(packet.telemetry(), decoded);
+            }
+            return false;
+        case MSPortNum::ROUTING_APP:
+            if (packet.has_routing()) {
+                return parseRoutingPayload(packet.routing(), decoded);
+            }
+            return false;
+        case MSPortNum::ADMIN_APP:
+            if (packet.has_admin()) {
+                return parseAdminPayload(packet.admin(), decoded);
+            }
+            return false;
+        case MSPortNum::NEIGHBORINFO_APP:
+            if (packet.has_neighborinfo()) {
+                return parseNeighborInfoPayload(packet.neighborinfo(), decoded);
+            }
+            return false;
+        case MSPortNum::WAYPOINT_APP:
+            if (packet.has_waypoint()) {
+                return parseWaypointPayload(packet.waypoint(), decoded);
+            }
+            return false;
+        case MSPortNum::AUDIO_APP:
+            if (packet.has_audio()) {
+                return parseAudioPayload(packet.audio(), decoded);
+            }
+            return false;
+        case MSPortNum::DETECTION_SENSOR_APP:
+            if (packet.has_detectionsensor()) {
+                return parseDetectionSensorPayload(packet.detectionsensor(), decoded);
+            }
+            return false;
+        case MSPortNum::REPLY_APP:
+            if (packet.has_reply()) {
+                return parseReplyPayload(packet.reply(), decoded);
+            }
+            return false;
+        case MSPortNum::PAXCOUNTER_APP:
+            if (packet.has_paxcount()) {
+                return parsePaxcountPayload(packet.paxcount(), decoded);
+            }
+            return false;
         default:
             decoded.error = "Unknown port number: " + std::to_string(packet.portnum());
             return false;
@@ -64,7 +101,7 @@ bool MeshtasticProtocolParser::extractPayload(const meshtastic::MeshPacket& pack
 
 bool MeshtasticProtocolParser::validatePacket(const meshtastic::MeshPacket& packet) {
     // Basic validation
-    if (packet.from() == 0 && packet.to() != BROADCAST_ADDR) {
+    if (packet.from() == 0 && packet.to() != MeshtasticProtocol::BROADCAST_ADDR) {
         return false;
     }
     if (packet.id() == 0) {
@@ -82,7 +119,7 @@ std::unique_ptr<meshtastic::MeshPacket> MeshtasticProtocolParser::createPacket(
     uint32_t id,
     uint8_t channel,
     uint8_t hopLimit,
-    PortNum portNum,
+    MSPortNum portNum,
     const uint8_t* payload,
     size_t payloadLen,
     bool wantAck,
@@ -102,7 +139,7 @@ std::unique_ptr<meshtastic::MeshPacket> MeshtasticProtocolParser::createPacket(
 
     // Set payload based on port
     // For text messages, we'd need to create a Data message
-    if (portNum == PortNum::TEXT_MESSAGE_APP && payload && payloadLen > 0) {
+    if (portNum == MSPortNum::TEXT_MESSAGE_APP && payload && payloadLen > 0) {
         Data data;
         data.set_portnum(static_cast<uint32_t>(portNum));
         data.set_payload(payload, payloadLen);
@@ -143,25 +180,25 @@ bool MeshtasticProtocolParser::verifyCRC(const uint8_t* data, size_t len, uint16
 }
 
 std::string MeshtasticProtocolParser::portNumToString(uint8_t port) {
-    switch (static_cast<PortNum>(port)) {
-        case PortNum::UNSET: return "UNSET";
-        case PortNum::TEXT_MESSAGE_APP: return "TEXT_MESSAGE";
-        case PortNum::POSITION_APP: return "POSITION";
-        case PortNum::NODEINFO_APP: return "NODEINFO";
-        case PortNum::ROUTING_APP: return "ROUTING";
-        case PortNum::ADMIN_APP: return "ADMIN";
-        case PortNum::TELEMETRY_APP: return "TELEMETRY";
-        case PortNum::WAYPOINT_APP: return "WAYPOINT";
-        case PortNum::AUDIO_APP: return "AUDIO";
-        case PortNum::DETECTION_SENSOR_APP: return "DETECTION_SENSOR";
-        case PortNum::REPLY_APP: return "REPLY";
-        case PortNum::IP_TUNNEL_APP: return "IP_TUNNEL";
-        case PortNum::PAXCOUNTER_APP: return "PAXCOUNTER";
-        case PortNum::SERIAL_APP: return "SERIAL";
-        case PortNum::STORE_FORWARD_APP: return "STORE_FORWARD";
-        case PortNum::ZPS_APP: return "ZPS";
-        case PortNum::PRIVATE_APP: return "PRIVATE_APP";
-        case PortNum::ATAK_FORWARD: return "ATAK_FORWARD";
+    switch (static_cast<MSPortNum>(port)) {
+        case MSPortNum::UNSET: return "UNSET";
+        case MSPortNum::TEXT_MESSAGE_APP: return "TEXT_MESSAGE";
+        case MSPortNum::POSITION_APP: return "POSITION";
+        case MSPortNum::NODEINFO_APP: return "NODEINFO";
+        case MSPortNum::ROUTING_APP: return "ROUTING";
+        case MSPortNum::ADMIN_APP: return "ADMIN";
+        case MSPortNum::TELEMETRY_APP: return "TELEMETRY";
+        case MSPortNum::WAYPOINT_APP: return "WAYPOINT";
+        case MSPortNum::AUDIO_APP: return "AUDIO";
+        case MSPortNum::DETECTION_SENSOR_APP: return "DETECTION_SENSOR";
+        case MSPortNum::REPLY_APP: return "REPLY";
+        case MSPortNum::IP_TUNNEL_APP: return "IP_TUNNEL";
+        case MSPortNum::PAXCOUNTER_APP: return "PAXCOUNTER";
+        case MSPortNum::SERIAL_APP: return "SERIAL";
+        case MSPortNum::STORE_FORWARD_APP: return "STORE_FORWARD";
+        case MSPortNum::ZPS_APP: return "ZPS";
+        case MSPortNum::PRIVATE_APP: return "PRIVATE_APP";
+        case MSPortNum::ATAK_FORWARD: return "ATAK_FORWARD";
         default: return "UNKNOWN(" + std::to_string(port) + ")";
     }
 }
@@ -301,9 +338,9 @@ bool MeshtasticProtocolParser::parsePaxcountPayload(const meshtastic::Paxcount& 
 }
 
 // DecodedMeshtasticPacket methods
-PortNum DecodedMeshtasticPacket::getPortNum() const {
-    if (!protoPacket) return PortNum::UNSET;
-    return static_cast<PortNum>(protoPacket->portnum());
+MSPortNum DecodedMeshtasticPacket::getPortNum() const {
+    if (!protoPacket) return MSPortNum::UNSET;
+    return static_cast<MSPortNum>(protoPacket->portnum());
 }
 
 std::string DecodedMeshtasticPacket::getPortName() const {
@@ -322,7 +359,7 @@ std::string DecodedMeshtasticPacket::getSummary() const {
 
     ss << " -> ";
 
-    if (header.destination == BROADCAST_ADDR) {
+    if (header.destination == MeshtasticProtocol::BROADCAST_ADDR) {
         ss << "BROADCAST";
     } else if (!toName.empty()) {
         ss << toName;

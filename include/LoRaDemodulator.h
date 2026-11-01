@@ -1,9 +1,16 @@
 #pragma once
 
-#include <dsp/complex.h>
 #include <vector>
 #include <cstdint>
 #include <memory>
+#include <functional>
+#include <complex>
+
+// Complex number type for IQ samples
+struct Complex {
+    float re = 0;
+    float im = 0;
+};
 
 // LoRa modem configuration
 struct LoRaModemConfig {
@@ -48,10 +55,10 @@ public:
     // iq: pointer to complex IQ samples (interleaved I/Q)
     // count: number of complex samples
     // Returns vector of detected packets
-    std::vector<LoRaPacket> process(const dsp::complex_t* iq, size_t count);
+    std::vector<LoRaPacket> process(const Complex* iq, size_t count);
 
     // Process IQ samples with explicit sample rate
-    std::vector<LoRaPacket> process(const dsp::complex_t* iq, size_t count, double sampleRate);
+    std::vector<LoRaPacket> process(const Complex* iq, size_t count, double sampleRate);
 
     // Get current configuration
     const LoRaModemConfig& getConfig() const { return config; }
@@ -100,7 +107,7 @@ private:
     // Built-in backend state (simplified LoRa detection)
     struct BuiltinState {
         // Chirp detection via FFT
-        std::vector<dsp::complex_t> fftBuffer;
+        std::vector<Complex> fftBuffer;
         std::vector<float> magBuffer;
         std::vector<float> preambleCorr;
         size_t fftSize = 1024;
@@ -137,23 +144,23 @@ private:
     void cleanupBuiltin();
 
     // Liquid-dsp processing
-    std::vector<LoRaPacket> processLiquidDSP(const dsp::complex_t* iq, size_t count);
+    std::vector<LoRaPacket> processLiquidDSP(const Complex* iq, size_t count);
 
     // Built-in processing
-    std::vector<LoRaPacket> processBuiltin(const dsp::complex_t* iq, size_t count);
+    std::vector<LoRaPacket> processBuiltin(const Complex* iq, size_t count);
 
     // Built-in helper methods
     void generateChirpTemplate();
     float correlatePreamble(const float* input, size_t len);
-    bool detectPreamble(const dsp::complex_t* iq, size_t count, size_t& startIdx);
-    bool decodePHYHeader(const dsp::complex_t* iq, size_t startIdx, LoRaPacket& packet);
-    bool decodePayload(const dsp::complex_t* iq, size_t startIdx, LoRaPacket& packet);
+    bool detectPreamble(const Complex* iq, size_t count, size_t& startIdx);
+    bool decodePHYHeader(const Complex* iq, size_t startIdx, LoRaPacket& packet);
+    bool decodePayload(const Complex* iq, size_t startIdx, LoRaPacket& packet);
     bool deinterleaveAndDecode(const uint8_t* encoded, size_t len, std::vector<uint8_t>& decoded);
     void dewhiten(uint8_t* data, size_t len);
     uint16_t calculateCRC(const uint8_t* data, size_t len);
 
     // Signal quality estimation
-    void estimateSignalQuality(const dsp::complex_t* iq, size_t count, float& snr, int& rssi);
+    void estimateSignalQuality(const Complex* iq, size_t count, float& snr, int& rssi);
 };
 
 // Utility functions for LoRa parameter calculations

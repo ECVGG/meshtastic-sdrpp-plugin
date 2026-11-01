@@ -1,4 +1,5 @@
 #include "MeshtasticDecryptor.h"
+#include "MeshtasticProtocol.h"
 #include <cryptopp/aes.h>
 #include <cryptopp/modes.h>
 #include <cryptopp/filters.h>
@@ -136,8 +137,8 @@ bool MeshtasticDecryptor::decrypt(meshtastic::MeshPacket& packet) {
         // Resync with new nonce
         decryptor->Resynchronize(nonce.data(), nonce.size());
 
-        CryptoPP::StringSource(
-            packet.payload(), true,
+        CryptoPP::StringSource ss(
+            packet.payload().data(), packet.payload().size(), true,
             new CryptoPP::StreamTransformationFilter(*decryptor,
                 new CryptoPP::StringSink(decrypted)
             )
