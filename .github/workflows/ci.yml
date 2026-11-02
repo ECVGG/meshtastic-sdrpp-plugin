@@ -69,6 +69,25 @@ jobs:
 
           echo "VCPKG_ROOT=C:/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      # -----------------------------------------------------------------------
+      # Install dependencies via vcpkg (uses cache if available)
+      # -----------------------------------------------------------------------
+      - name: Install vcpkg dependencies
+        shell: pwsh
+        timeout-minutes: 20
+        run: |
+          cd C:/vcpkg
+          # Install only required packages from manifest
+          # This will use binary cache if available, otherwise build from source
+          ./vcpkg install --triplet x64-windows `
+            --x-manifest-root="${{ github.workspace }}" `
+            --x-wait-for-lock `
+            --feature-flags=manifests,binarycaching `
+            --binarysource="clear;files,${env:RUNNER_TEMP}/vcpkg-binaries,readwrite"
+
+          # Verify installed packages
+          ./vcpkg list --triplet x64-windows
+
       - name: Test step
         shell: pwsh
         run: Write-Host "Test successful for ${{ matrix.build_type }}"
