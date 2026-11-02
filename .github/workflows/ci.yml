@@ -29,8 +29,6 @@ jobs:
     name: Setup vcpkg & Install Dependencies
     runs-on: windows-latest
     timeout-minutes: 30
-    outputs:
-      vcpkg-root: ${{ steps.setup-vcpkg.outputs.vcpkg-root }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -86,7 +84,6 @@ jobs:
           Write-Host "VCPKG_BINARY_SOURCES=$env:VCPKG_BINARY_SOURCES"
           Write-Host "VCPKG_FEATURE_FLAGS=$env:VCPKG_FEATURE_FLAGS"
 
-          echo "vcpkg-root=C:/vcpkg" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           echo "VCPKG_ROOT=C:/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       # -----------------------------------------------------------------------
@@ -221,7 +218,8 @@ jobs:
             $cmakeConfigDir = Join-Path $sdrppRoot "lib/cmake/SDRPlusPlus"
             if (-not (Test-Path $cmakeConfigDir)) {
               New-Item -ItemType Directory -Force -Path $cmakeConfigDir | Out-Null
-              @"
+              # Create minimal SDRPlusPlusConfig.cmake
+              $cfgContent = @"
 # Minimal SDRPlusPlus config for plugin building
 set(SDRPlusPlus_VERSION "nightly")
 set(SDRPlusPlus_INCLUDE_DIRS "${sdrppRoot}/include")
@@ -239,7 +237,7 @@ find_package(fmt QUIET)
 find_package(spdlog QUIET)
 find_package(nlohmann_json QUIET)
 "@
-              | Out-File -FilePath (Join-Path $cmakeConfigDir "SDRPlusPlusConfig.cmake") -Encoding UTF8
+              $cfgContent | Out-File -FilePath (Join-Path $cmakeConfigDir "SDRPlusPlusConfig.cmake") -Encoding UTF8
             }
           }
 
