@@ -7,7 +7,6 @@
     "abseil",
     "fmt",
     "spdlog",
-    "nlohmann-json",
-    "liquid-dsp"
+    "nlohmann-json"
   ]
 }
