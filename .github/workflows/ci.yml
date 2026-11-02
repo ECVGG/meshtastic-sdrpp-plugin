@@ -93,11 +93,15 @@ jobs:
           choco install 7zip -y --no-progress
           # Verify installation
           7z | head -5
+          # Output the 7zip path for vcpkg
+          echo "VCPKG_7ZIP_PATH=C:\Program Files\7-Zip\7z.exe" >> $env:GITHUB_ENV
 
       - name: Setup vcpkg (Windows)
         if: runner.os == 'Windows'
         shell: bash
         timeout-minutes: 120
+        env:
+          VCPKG_7ZIP_PATH: ${{ env.VCPKG_7ZIP_PATH }}
         run: |
           set -eu
           set -x
