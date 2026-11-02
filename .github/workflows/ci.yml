@@ -19,6 +19,22 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      # -----------------------------------------------------------------------
+      # Cache vcpkg installed packages to avoid rebuilding from source
+      # -----------------------------------------------------------------------
+      - name: Cache vcpkg packages
+        id: vcpkg-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:/vcpkg/installed
+            C:/vcpkg/packages
+            C:/vcpkg/downloads
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-
+
       - name: Test step
         shell: pwsh
         run: Write-Host "Test successful for ${{ matrix.build_type }}"
