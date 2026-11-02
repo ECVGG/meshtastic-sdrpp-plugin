@@ -101,6 +101,31 @@ jobs:
       - name: Configure
         shell: pwsh
         run: |
+          # Set up Visual Studio environment
+          $vsPath = "${env:ProgramFiles}/Microsoft Visual Studio/2022/Enterprise/VC/Auxiliary/Build/vcvarsall.bat"
+          if (-not (Test-Path $vsPath)) {
+            $vsPath = "${env:ProgramFiles}/Microsoft Visual Studio/2022/Community/VC/Auxiliary/Build/vcvarsall.bat"
+          }
+          if (-not (Test-Path $vsPath)) {
+            $vsPath = "${env:ProgramFiles}/Microsoft Visual Studio/2022/Professional/VC/Auxiliary/Build/vcvarsall.bat"
+          }
+          if (-not (Test-Path $vsPath)) {
+            # Try vswhere
+            $vswhere = "${env:ProgramFiles}/Microsoft Visual Studio/Installer/vswhere.exe"
+            if (Test-Path $vswhere) {
+              $vsInstallDir = & $vswhere -latest -property installationPath
+              if ($vsInstallDir) {
+                $vsPath = Join-Path $vsInstallDir "VC/Auxiliary/Build/vcvarsall.bat"
+              }
+            }
+          }
+          if (Test-Path $vsPath) {
+            Write-Host "Setting up Visual Studio environment from: $vsPath"
+            & $vsPath x64
+          } else {
+            Write-Warning "Could not find vcvarsall.bat, trying without VS environment setup"
+          }
+
           cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DSDRPP_CORE_ROOT="${{ steps.sdrpp.outputs.SDRPP_ROOT }}" -DSDRPP_CMAKE_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"
 
       - name: Build
