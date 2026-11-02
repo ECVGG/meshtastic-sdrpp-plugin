@@ -127,15 +127,15 @@ jobs:
           # Check if it exists and use it
           if [ ! -d "C:/vcpkg" ]; then
             echo "vcpkg not found at C:/vcpkg, installing..."
-            git clone --depth 1 --branch 2024.01.12 https://github.com/microsoft/vcpkg.git C:/vcpkg
+            git clone --depth 1 https://github.com/microsoft/vcpkg.git C:/vcpkg
             cd C:/vcpkg
             ./bootstrap-vcpkg.bat -disableMetrics
           else
             echo "Using pre-installed vcpkg at C:/vcpkg"
             cd C:/vcpkg
-            # Update to a known good commit for binary compatibility
-            git fetch --depth 1 origin 2024.01.12 2>/dev/null || true
-            git checkout 2024.01.12 2>/dev/null || true
+            # Update to latest commit for fixed ports (pkgconf download issue)
+            git fetch --depth 1 origin 2>/dev/null || true
+            git checkout FETCH_HEAD 2>/dev/null || true
             ./bootstrap-vcpkg.bat -disableMetrics 2>/dev/null || true
           fi
 
