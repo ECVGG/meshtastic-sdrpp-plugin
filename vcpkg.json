@@ -7,9 +7,6 @@
     "abseil",
     "fmt",
     "spdlog",
-    "nlohmann-json",
-    "volk",
-    "glfw3",
-    "gtest"
+    "nlohmann-json"
   ]
 }
