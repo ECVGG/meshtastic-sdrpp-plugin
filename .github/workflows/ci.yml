@@ -127,9 +127,10 @@ jobs:
           mkdir -p "$VCPKG_BINARY_CACHE"
           # Must run from repo root where vcpkg.json is located
           cd "${GITHUB_WORKSPACE}"
+          # Use proper quoting for binarysource to avoid bash interpreting semicolon
           C:/vcpkg/vcpkg install \
             --triplet x64-windows \
-            --binarysource=clear;files,"$VCPKG_BINARY_CACHE",readwrite \
+            "--binarysource=clear;files,$VCPKG_BINARY_CACHE,readwrite" \
             --x-wait-for-lock \
             --feature-flags=manifests
 
