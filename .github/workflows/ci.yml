@@ -10,7 +10,7 @@ on:
 
 env:
   VCPKG_VERSION: "2024.06.14"
-  SDRPP_URL: "https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/SDRPlusPlus_win64.zip"
+  SDRPP_URL: "https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/sdrpp_windows_x64.zip"
 
 jobs:
   build:
