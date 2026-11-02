@@ -1,5 +1,15 @@
 #include "MeshtasticProtocol.h"
 #include "mesh.pb.h"
+#include "data.pb.h"
+#include "telemetry.pb.h"
+#include "remote_hardware.pb.h"
+#include "admin.pb.h"
+#include "neighbor_info.pb.h"
+#include "routing.pb.h"
+#include "local_only.pb.h"
+#include "pax.pb.h"
+#include "store_forward.pb.h"
+#include "detection_sensor.pb.h"
 #include <cstring>
 
 namespace MeshtasticProtocol {
@@ -14,62 +24,139 @@ bool MeshtasticProtocolParser::parsePacket(const uint8_t* data, size_t len, goog
     }
 }
 
+bool MeshtasticProtocolParser::parseAppPayload(const meshtastic::MeshPacket& meshPacket, google::protobuf::Message& appPacket) {
+    const std::string& payload = meshPacket.payload();
+    if (payload.empty()) return false;
+
+    try {
+        return appPacket.ParseFromArray(payload.data(), static_cast<int>(payload.size()));
+    } catch (...) {
+        return false;
+    }
+}
+
 bool MeshtasticProtocolParser::extractPayload(const google::protobuf::Message& packet, DecodedMeshtasticPacket& decoded) {
     // Cast to MeshPacket to access fields
     const auto* meshPacket = dynamic_cast<const meshtastic::MeshPacket*>(&packet);
     if (!meshPacket) return false;
 
-    // Check port number and extract appropriate payload
     uint32_t port = meshPacket->portnum();
 
+    // Parse the application payload based on portnum
     switch (static_cast<MSPortNum>(port)) {
         case MSPortNum::TEXT_MESSAGE_APP: {
-            if (meshPacket->has_data()) {
-                const auto& data = meshPacket->data();
+            meshtastic::Data data;
+            if (parseAppPayload(*meshPacket, data)) {
                 if (data.has_text()) {
                     decoded.textMessage = data.text();
+                }
+                if (data.has_payload() && !data.payload().empty()) {
+                    // Also include binary payload info
+                    if (!decoded.textMessage.empty()) decoded.textMessage += " ";
+                    decoded.textMessage += "[binary:" + std::to_string(data.payload().size()) + " bytes]";
                 }
             }
             break;
         }
         case MSPortNum::POSITION_APP: {
-            if (meshPacket->has_position()) {
-                const auto& pos = meshPacket->position();
+            meshtastic::Position pos;
+            if (parseAppPayload(*meshPacket, pos)) {
                 decoded.textMessage = "Position: lat=" + std::to_string(pos.latitude()) +
                                      " lon=" + std::to_string(pos.longitude()) +
                                      " alt=" + std::to_string(pos.altitude());
+                if (pos.has_battery_level()) {
+                    decoded.textMessage += " bat=" + std::to_string(pos.battery_level()) + "%";
+                }
             }
             break;
         }
         case MSPortNum::NODEINFO_APP: {
-            if (meshPacket->has_nodeinfo()) {
-                const auto& info = meshPacket->nodeinfo();
-                decoded.textMessage = "NodeInfo: " + info.long_name() + " (" + info.short_name() + ")";
+            meshtastic::User user;
+            if (parseAppPayload(*meshPacket, user)) {
+                decoded.textMessage = "NodeInfo: " + user.long_name() + " (" + user.short_name() + ")";
+                decoded.fromName = user.long_name();
+                if (!user.hw_model().empty()) {
+                    decoded.textMessage += " hw=" + user.hw_model();
+                }
+                if (!user.role().empty()) {
+                    decoded.textMessage += " role=" + user.role();
+                }
             }
             break;
         }
         case MSPortNum::TELEMETRY_APP: {
-            if (meshPacket->has_telemetry()) {
-                decoded.textMessage = "Telemetry data";
+            meshtastic::Telemetry telemetry;
+            if (parseAppPayload(*meshPacket, telemetry)) {
+                decoded.textMessage = "Telemetry";
+                if (telemetry.has_device_metrics()) {
+                    const auto& dm = telemetry.device_metrics();
+                    decoded.textMessage += ": bat=" + std::to_string(dm.battery_level()) +
+                                         "V voltage=" + std::to_string(dm.voltage()) +
+                                         " util=" + std::to_string(dm.channel_utilization());
+                } else if (telemetry.has_environment_metrics()) {
+                    const auto& em = telemetry.environment_metrics();
+                    decoded.textMessage += ": temp=" + std::to_string(em.temperature()) +
+                                         "C hum=" + std::to_string(em.relative_humidity()) +
+                                         "% pres=" + std::to_string(em.barometric_pressure());
+                } else {
+                    decoded.textMessage += " data";
+                }
             }
             break;
         }
         case MSPortNum::ROUTING_APP: {
-            if (meshPacket->has_routing()) {
+            meshtastic::RouteDiscovery routing;
+            if (parseAppPayload(*meshPacket, routing)) {
+                decoded.textMessage = "RouteDiscovery to=!" + std::to_string(routing.route_to());
+            } else {
                 decoded.textMessage = "Routing data";
             }
             break;
         }
         case MSPortNum::ADMIN_APP: {
-            if (meshPacket->has_admin()) {
-                decoded.textMessage = "Admin message";
+            meshtastic::AdminMessage admin;
+            if (parseAppPayload(*meshPacket, admin)) {
+                decoded.textMessage = "Admin: " + admin.text();
+                if (admin.has_config()) {
+                    decoded.textMessage += " [config]";
+                }
             }
             break;
         }
         case MSPortNum::NEIGHBORINFO_APP: {
-            if (meshPacket->has_neighborinfo()) {
-                decoded.textMessage = "Neighbor info";
+            meshtastic::NeighborInfo neighborInfo;
+            if (parseAppPayload(*meshPacket, neighborInfo)) {
+                decoded.textMessage = "NeighborInfo: " + std::to_string(neighborInfo.neighbors_size()) + " neighbors";
             }
+            break;
+        }
+        case MSPortNum::TRACEROUTE_APP: {
+            meshtastic::Traceroute traceroute;
+            if (parseAppPayload(*meshPacket, traceroute)) {
+                decoded.textMessage = "Traceroute: " + std::to_string(traceroute.route_size()) + " hops";
+            }
+            break;
+        }
+        case MSPortNum::PAXCOUNTER_APP: {
+            meshtastic::Paxcount pax;
+            if (parseAppPayload(*meshPacket, pax)) {
+                decoded.textMessage = "Paxcount: " + std::to_string(pax.count()) + " devices";
+            }
+            break;
+        }
+        case MSPortNum::DETECTION_SENSOR_APP: {
+            meshtastic::DetectionSensor sensor;
+            if (parseAppPayload(*meshPacket, sensor)) {
+                decoded.textMessage = "DetectionSensor";
+            }
+            break;
+        }
+        case MSPortNum::LOCAL_ONLY_APP: {
+            decoded.textMessage = "LocalOnly";
+            break;
+        }
+        case MSPortNum::RANGE_TEST_APP: {
+            decoded.textMessage = "RangeTest";
             break;
         }
         default: {
@@ -81,7 +168,7 @@ bool MeshtasticProtocolParser::extractPayload(const google::protobuf::Message& p
     return true;
 }
 
-std::string MeshtasticProtocolParser::portNumToString(uint8_t port) {
+std::string MeshtasticProtocolParser::portNumToString(uint32_t port) {
     switch (static_cast<MSPortNum>(port)) {
         case MSPortNum::UNKNOWN_APP: return "UNKNOWN";
         case MSPortNum::TEXT_MESSAGE_APP: return "TEXT_MESSAGE";
@@ -100,7 +187,7 @@ std::string MeshtasticProtocolParser::portNumToString(uint8_t port) {
         case MSPortNum::SERIAL_APP: return "SERIAL";
         case MSPortNum::STORE_FORWARD_APP: return "STORE_FORWARD";
         case MSPortNum::NEIGHBORINFO_APP: return "NEIGHBORINFO";
-        case MSPortNum::MqttProxy: return "MQTT_PROXY";
+        case MSPortNum::MQTT_PROXY: return "MQTT_PROXY";
         case MSPortNum::ZPS_APP: return "ZPS";
         case MSPortNum::TRACEROUTE_APP: return "TRACEROUTE";
         case MSPortNum::LOCAL_ONLY_APP: return "LOCAL_ONLY";

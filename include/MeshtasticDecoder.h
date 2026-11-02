@@ -11,11 +11,7 @@
 #include <memory>
 #include <chrono>
 #include <google/protobuf/message.h>
-
-// Forward declaration for nlohmann::json (include in cpp)
-namespace nlohmann {
-    class json;
-}
+#include <nlohmann/json.hpp>
 
 namespace MeshtasticDecoder {
 
@@ -139,7 +135,7 @@ private:
     void displayPacket(DecodedPacket& packet);
 
     std::string nodeIdToString(uint32_t id) const;
-    std::string portNumToString(uint8_t port) const;
+    std::string portNumToString(uint32_t port) const;
     std::string formatTime(uint32_t ms) const;
 };
 

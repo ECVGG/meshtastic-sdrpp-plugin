@@ -13,8 +13,8 @@ namespace MeshtasticProtocol {
 constexpr uint32_t BROADCAST_ADDR = 0xFFFFFFFF;
 constexpr uint8_t MESHTASTIC_FLAG = 0x94;
 
-// Port numbers from Meshtastic specification
-enum class MSPortNum : uint8_t {
+// Port numbers from Meshtastic specification (matches protobuf PortNum enum)
+enum class MSPortNum : uint32_t {
     UNKNOWN_APP = 0,
     TEXT_MESSAGE_APP = 1,
     REMOTE_HARDWARE_APP = 2,
@@ -32,7 +32,7 @@ enum class MSPortNum : uint8_t {
     SERIAL_APP = 14,
     STORE_FORWARD_APP = 15,
     NEIGHBORINFO_APP = 16,
-    MqttProxy = 17,
+    MQTT_PROXY = 17,
     ZPS_APP = 18,
     TRACEROUTE_APP = 19,
     LOCAL_ONLY_APP = 64,
@@ -95,10 +95,10 @@ struct MeshHeader {
     }
 };
 
-// Decoded packet with all metadata
+// Decoded packet with all metadata - copyable using shared_ptr
 struct DecodedMeshtasticPacket {
     MeshHeader header;
-    std::unique_ptr<google::protobuf::Message> protoPacket;
+    std::shared_ptr<google::protobuf::Message> protoPacket;
     std::string textMessage;
     std::string fromName;
     std::string toName;
@@ -109,6 +109,9 @@ struct DecodedMeshtasticPacket {
     double timestamp = 0;
     int rssi = 0;
     float snr = 0.0f;
+
+    DecodedMeshtasticPacket() = default;
+    // Default copy/move operations work with shared_ptr
 };
 
 // Key derivation salt (Meshtastic uses "Meshtastic" as salt)
@@ -151,11 +154,14 @@ public:
     // Parse raw packet bytes into MeshPacket protobuf
     static bool parsePacket(const uint8_t* data, size_t len, google::protobuf::Message& packet);
 
+    // Parse application payload from decrypted MeshPacket payload
+    static bool parseAppPayload(const meshtastic::MeshPacket& meshPacket, google::protobuf::Message& appPacket);
+
     // Extract human-readable payload from MeshPacket
     static bool extractPayload(const google::protobuf::Message& packet, DecodedMeshtasticPacket& decoded);
 
     // Convert port number to string
-    static std::string portNumToString(uint8_t port);
+    static std::string portNumToString(uint32_t port);
 
     // Calculate CRC16-CCITT
     static uint16_t calculateCRC(const uint8_t* data, size_t len);

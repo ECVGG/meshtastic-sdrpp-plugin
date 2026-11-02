@@ -206,7 +206,7 @@ void MeshtasticPlugin::drawGUI() {
             ImGui::Text("%s", timeStr); ImGui::NextColumn();
             ImGui::Text("%s", p.fromName.c_str()); ImGui::NextColumn();
             ImGui::Text("%s", p.toName.c_str()); ImGui::NextColumn();
-            ImGui::Text("%s", MeshtasticDecoder::MeshtasticDecoder::portNumToString(static_cast<uint8_t>(p.header.port)).c_str()); ImGui::NextColumn();
+            ImGui::Text("%s", MeshtasticDecoder::MeshtasticDecoder::portNumToString(static_cast<uint32_t>(p.header.port)).c_str()); ImGui::NextColumn();
             ImGui::Text("%d", p.rssi); ImGui::NextColumn();
             ImGui::Text("%.1f", p.snr); ImGui::NextColumn();
             ImGui::Text("%s", p.decodedText.c_str()); ImGui::NextColumn();

@@ -2,6 +2,8 @@
 #include "MeshtasticProtocol.h"
 #include "MeshtasticDecryptor.h"
 #include "mesh.pb.h"
+#include "data.pb.h"
+#include "telemetry.pb.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cstring>
@@ -136,14 +138,14 @@ bool MeshtasticDecoder::processRawPacketInternal(const std::vector<uint8_t>& raw
     }
 
     // Parse protobuf
-    auto meshPacket = std::make_unique<meshtastic::MeshPacket>();
+    auto meshPacket = std::make_shared<meshtastic::MeshPacket>();
     if (!MeshtasticProtocol::MeshtasticProtocolParser::parsePacket(
             rawPacket.data() + payloadStart, payloadLen, *meshPacket)) {
         decoded.error = "Protobuf parse failed";
         return false;
     }
 
-    decoded.protoPacket = std::move(meshPacket);
+    decoded.protoPacket = meshPacket;
 
     // Try to decrypt if encrypted
     if (decoded.protoPacket &&
@@ -261,23 +263,32 @@ void MeshtasticDecoder::updateNodeDatabase(const google::protobuf::Message& pack
     node.lastSeen = std::chrono::duration<double>(
         std::chrono::system_clock::now().time_since_epoch()).count();
 
-    // Extract node info if present
-    if (meshPacket->has_nodeinfo()) {
-        const auto& info = meshPacket->nodeinfo();
-        node.longName = info.long_name();
-        node.shortName = info.short_name();
-        node.hwModel = info.hw_model();
-        node.role = static_cast<uint8_t>(info.role());
-    }
+    // Parse application payload based on portnum to extract node info / position
+    uint32_t port = meshPacket->portnum();
 
-    // Extract position if present
-    if (meshPacket->has_position()) {
-        const auto& pos = meshPacket->position();
-        node.latitude = pos.latitude();
-        node.longitude = pos.longitude();
-        node.altitude = pos.altitude();
-        if (pos.has_battery_level()) {
-            node.batteryLevel = static_cast<uint8_t>(pos.battery_level());
+    if (port == static_cast<uint32_t>(MeshtasticProtocol::MSPortNum::NODEINFO_APP)) {
+        meshtastic::User user;
+        if (MeshtasticProtocol::MeshtasticProtocolParser::parseAppPayload(*meshPacket, user)) {
+            node.longName = user.long_name();
+            node.shortName = user.short_name();
+            node.hwModel = user.hw_model();
+            // role is a string in protobuf, convert if needed
+            if (!user.role().empty()) {
+                // Map role string to uint8_t (simplified)
+                if (user.role() == "ROUTER") node.role = 1;
+                else if (user.role() == "CLIENT") node.role = 2;
+                else node.role = 0;
+            }
+        }
+    } else if (port == static_cast<uint32_t>(MeshtasticProtocol::MSPortNum::POSITION_APP)) {
+        meshtastic::Position pos;
+        if (MeshtasticProtocol::MeshtasticProtocolParser::parseAppPayload(*meshPacket, pos)) {
+            node.latitude = pos.latitude();
+            node.longitude = pos.longitude();
+            node.altitude = pos.altitude();
+            if (pos.has_battery_level()) {
+                node.batteryLevel = static_cast<uint8_t>(pos.battery_level());
+            }
         }
     }
 }
@@ -386,7 +397,7 @@ std::string MeshtasticDecoder::nodeIdToString(uint32_t id) const {
     return std::string(buf);
 }
 
-std::string MeshtasticDecoder::portNumToString(uint8_t port) const {
+std::string MeshtasticDecoder::portNumToString(uint32_t port) const {
     return MeshtasticProtocol::MeshtasticProtocolParser::portNumToString(port);
 }
 
