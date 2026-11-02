@@ -5,41 +5,63 @@
 #include <memory>
 #include <complex>
 
-// Forward declare SDR++ types to avoid including SDR++ headers
-namespace sdrpp {
-    class ModuleManager;
-    class Module;
-    class GUI;
-    class Source;
-}
+// Include SDR++ module header for proper plugin API
+#include <module.h>
+#include <gui/gui.h>
 
-// SDR++ plugin API macros
-#ifdef _WIN32
-    #define SDRPP_EXPORT __declspec(dllexport)
-#else
-    #define SDRPP_EXPORT __attribute__((visibility("default")))
+// Try to include ImGui - it's bundled with SDR++
+#if defined(__has_include)
+#  if __has_include(<imgui.h>)
+#    define HAS_IMGUI 1
+#    include <imgui.h>
+#  endif
 #endif
 
-// Module info macro (simplified for portable release)
-#define SDRPP_MOD_INFO(name, version, description) \
-    extern "C" SDRPP_EXPORT const char* SDRPP_MODULE_NAME = name; \
-    extern "C" SDRPP_EXPORT const char* SDRPP_MODULE_VERSION = version; \
-    extern "C" SDRPP_EXPORT const char* SDRPP_MODULE_DESCRIPTION = description;
+#ifndef HAS_IMGUI
+#  define HAS_IMGUI 0
+// Minimal stub types for when ImGui is not available
+namespace ImGui {
+    struct ImVec2 { float x, y; ImVec2(float x_, float y_) : x(x_), y(y_) {} };
+    enum ImGuiCond_ { ImGuiCond_FirstUseEver = 1 };
+    enum ImGuiTreeNodeFlags_ { ImGuiTreeNodeFlags_DefaultOpen = 1 };
+    enum ImGuiDataType_ { ImGuiDataType_U8 = 1 };
+    inline void SetNextWindowSize(ImVec2, ImGuiCond_) {}
+    inline bool Begin(const char*, bool*) { return false; }
+    inline void End() {}
+    inline void Text(const char*, ...) {}
+    inline void Separator() {}
+    inline void Spacing() {}
+    inline bool CollapsingHeader(const char*, int) { return false; }
+    inline bool Checkbox(const char*, bool*) { return false; }
+    inline void SameLine() {}
+    inline bool Button(const char*) { return false; }
+    inline void PushID(int) {}
+    inline void PopID() {}
+    inline bool Combo(const char*, int*, const char*) { return false; }
+    inline bool InputInt(const char*, int*) { return false; }
+    inline bool InputScalar(const char*, ImGuiDataType_, void*) { return false; }
+    inline bool InputText(const char*, char*, size_t) { return false; }
+    inline bool InputDouble(const char*, double*, double, double, const char*) { return false; }
+    inline void Columns(int, const char*) {}
+    inline void NextColumn() {}
+    inline void Strftime(char*, size_t, const char*, const std::tm*) {}
+    inline std::tm* localtime(const time_t*) { return nullptr; }
+}
 
-// Plugin class using forward declarations
-class MeshtasticPlugin {
+// Use SDR++ module API macros
+#define MOD_EXPORT extern "C" __declspec(dllexport)
+
+// Plugin class - inherits from SDR++ ModuleManager::Instance
+class MeshtasticPlugin : public ModuleManager::Instance {
 public:
-    MeshtasticPlugin(sdrpp::ModuleManager* manager, const std::string& configPath);
-    virtual ~MeshtasticPlugin();
+    MeshtasticPlugin(const std::string& configPath);
+    virtual ~MeshtasticPlugin() = default;
 
-    // Module interface
-    virtual void postInit() {}
-    virtual void enable() { enabled = true; }
-    virtual void disable() { enabled = false; }
-    virtual bool isEnabled() const { return enabled; }
-    virtual const char* getName() const { return "Meshtastic"; }
-    virtual const char* getVersion() const { return "1.0.0"; }
-    virtual const char* getDescription() const { return "Meshtastic protocol decoder/decryptor"; }
+    // Module interface (matches ModuleManager::Instance)
+    void postInit() override;
+    void enable() override;
+    void disable() override;
+    bool isEnabled() override;
 
     // Process IQ data from SDR++
     void processIQ(const std::complex<float>* iq, size_t count, double sampleRate);
@@ -58,7 +80,6 @@ public:
     uint64_t getPacketsDecrypted() const;
 
 private:
-    sdrpp::ModuleManager* moduleManager = nullptr;
     std::string configPath;
     bool enabled = false;
 
@@ -82,19 +103,14 @@ private:
     bool iqInverted = false;
     double centerFrequency = 915000000.0;
     double sampleRate = 1000000.0;
-
-    // Statistics for display
-    uint64_t lastPacketsReceived = 0;
-    uint64_t lastPacketsDecoded = 0;
-    uint64_t lastPacketsDecrypted = 0;
 };
 
-// C API exports for SDR++ plugin system
-extern "C" {
-    SDRPP_EXPORT void* SDRPP_MODULE_CREATE_INSTANCE(sdrpp::ModuleManager* manager, const char* configPath);
-    SDRPP_EXPORT void SDRPP_MODULE_DELETE_INSTANCE(void* instance);
-    SDRPP_EXPORT void SDRPP_MODULE_INIT();
-    SDRPP_EXPORT void SDRPP_MODULE_END();
-}
+// Module info (defined in MeshtasticPlugin.cpp)
+// SDRPP_MOD_INFO expands to: MOD_EXPORT const ModuleManager::ModuleInfo_t _INFO_
+SDRPP_MOD_INFO;
 
-SDRPP_MOD_INFO("Meshtastic", "1.0.0", "Meshtastic protocol decoder/decryptor plugin for SDR++")
+// C API exports (matching SDR++ expectations)
+MOD_EXPORT void _INIT_();
+MOD_EXPORT ModuleManager::Instance* _CREATE_INSTANCE_(std::string name);
+MOD_EXPORT void _DELETE_INSTANCE_(ModuleManager::Instance* instance);
+MOD_EXPORT void _END_();

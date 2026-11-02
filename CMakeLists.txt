@@ -45,6 +45,9 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
+# Build date for version header
+string(TIMESTAMP BUILD_DATE "%Y-%m-%d %H:%M:%S" UTC)
+
 # =============================================================================
 # Find SDR++ Core
 # =============================================================================
@@ -168,6 +171,16 @@ else()
     endif()
 endif()
 
+# liquid-dsp for LoRa demodulation
+find_package(liquid QUIET)
+if(liquid_FOUND)
+    message(STATUS "Found liquid-dsp: ${liquid_VERSION}")
+    set(HAVE_LIQUID 1)
+else()
+    message(STATUS "liquid-dsp not found - using built-in LoRa demodulator")
+    set(HAVE_LIQUID 0)
+endif()
+
 # Check for ImGui (bundled with SDR++ but headers may not be in portable release)
 find_path(IMGUI_INCLUDE_DIR imgui.h
     PATHS ${SDRPlusPlus_INCLUDE_DIRS} ${CMAKE_INSTALL_PREFIX}/include ${CMAKE_PREFIX_PATH}/include
@@ -285,6 +298,14 @@ else()
     target_compile_definitions(MeshtasticPlugin PRIVATE HAS_IMGUI=0)
 endif()
 
+# Add liquid-dsp include if found
+if(HAVE_LIQUID)
+    target_include_directories(MeshtasticPlugin PRIVATE ${liquid_INCLUDE_DIRS})
+    target_compile_definitions(MeshtasticPlugin PRIVATE HAVE_LIQUID=1)
+else()
+    target_compile_definitions(MeshtasticPlugin PRIVATE HAVE_LIQUID=0)
+endif()
+
 # Compile definitions
 target_compile_definitions(MeshtasticPlugin PRIVATE
     MESHTASTIC_PLUGIN_VERSION="${MESHTASTIC_PLUGIN_VERSION}"
@@ -314,6 +335,10 @@ endif()
 
 if(nlohmann_json_FOUND)
     target_link_libraries(MeshtasticPlugin PRIVATE nlohmann_json::nlohmann_json)
+endif()
+
+if(HAVE_LIQUID)
+    target_link_libraries(MeshtasticPlugin PRIVATE liquid::liquid)
 endif()
 
 # Windows: Force static runtime to avoid MSVCP dependency

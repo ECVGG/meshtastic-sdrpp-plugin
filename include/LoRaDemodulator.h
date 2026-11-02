@@ -56,6 +56,8 @@ private:
         double freqOffset = 0;
         int sf = 7;
         int bw = 125000;
+        double sampleRate = 1000000.0;
+        double centerFreq = 915000000.0;
     };
     std::unique_ptr<BuiltinState> builtinState;
 
