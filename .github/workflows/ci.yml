@@ -35,6 +35,40 @@ jobs:
           restore-keys: |
             vcpkg-${{ runner.os }}-
 
+      # -----------------------------------------------------------------------
+      # Setup vcpkg with binary caching enabled
+      # -----------------------------------------------------------------------
+      - name: Setup vcpkg (Windows)
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          # vcpkg is pre-installed on windows-latest at C:/vcpkg
+          if (-not (Test-Path "C:/vcpkg")) {
+            Write-Host "vcpkg not found, installing..."
+            git clone --depth 1 --branch 2024.06.14 https://github.com/microsoft/vcpkg.git C:/vcpkg
+            cd C:/vcpkg
+            ./bootstrap-vcpkg.bat -disableMetrics
+          } else {
+            Write-Host "Using pre-installed vcpkg at C:/vcpkg"
+            cd C:/vcpkg
+            # Ensure we're on a pinned commit with good binary cache
+            git fetch --depth 1 origin 2024.06.14 2>$null || $true
+            git checkout 2024.06.14 2>$null || $true
+            ./bootstrap-vcpkg.bat -disableMetrics 2>$null || $true
+          }
+
+          # Enable binary caching via environment variable
+          $env:VCPKG_BINARY_SOURCES = "clear;files,${env:RUNNER_TEMP}/vcpkg-binaries,readwrite"
+          $env:VCPKG_FEATURE_FLAGS = "manifests,binarycaching"
+
+          # Create binary cache directory
+          New-Item -ItemType Directory -Force -Path "${env:RUNNER_TEMP}/vcpkg-binaries" | Out-Null
+
+          Write-Host "VCPKG_BINARY_SOURCES=$env:VCPKG_BINARY_SOURCES"
+          Write-Host "VCPKG_FEATURE_FLAGS=$env:VCPKG_FEATURE_FLAGS"
+
+          echo "VCPKG_ROOT=C:/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Test step
         shell: pwsh
         run: Write-Host "Test successful for ${{ matrix.build_type }}"
