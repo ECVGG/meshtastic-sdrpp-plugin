@@ -85,6 +85,15 @@ jobs:
       # =========================================================================
       # WINDOWS: Use GitHub's pre-installed vcpkg for speed
       # =========================================================================
+      - name: Install 7zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Install 7zip via chocolatey (required by vcpkg for package extraction)
+          choco install 7zip -y --no-progress
+          # Verify installation
+          7z | head -5
+
       - name: Setup vcpkg (Windows)
         if: runner.os == 'Windows'
         shell: bash
