@@ -151,4 +151,4 @@ MIT License - See LICENSE file for details.
 - [Meshtastic](https://meshtastic.org/) - The LoRa mesh protocol
 - [liquid-dsp](https://github.com/jgaeddert/liquid-dsp) - DSP library
 - [Crypto++](https://www.cryptopp.com/) - Cryptography library
-- [protobuf](https://github.com/protocolbuffers/protobuf) - Protocol buffers
+- [protobuf](https://github.com/protocolbuffers/protobuf) - Protocol buffers# CI trigger
