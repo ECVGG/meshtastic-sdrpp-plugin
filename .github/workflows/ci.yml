@@ -89,14 +89,17 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/cache@v4
         with:
-          path: C:/vcpkg
-          key: vcpkg-${{ hashFiles('vcpkg.json') }}-${{ runner.os }}-${{ github.sha }}
+          path: |
+            C:/vcpkg
+            ${{ runner.temp }}/vcpkg-binaries
+          key: vcpkg-${{ hashFiles('vcpkg.json') }}-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
           restore-keys: |
             vcpkg-${{ hashFiles('vcpkg.json') }}-${{ runner.os }}-
 
       - name: Setup vcpkg (Windows)
         if: runner.os == 'Windows'
         shell: bash
+        timeout-minutes: 60
         run: |
           set -eu
           set -x
@@ -113,7 +116,8 @@ jobs:
 
           if [ ! -d "C:/vcpkg" ]; then
             echo "=== Installing vcpkg ==="
-            git clone https://github.com/microsoft/vcpkg.git C:/vcpkg
+            # Use a known good commit for better binary compatibility
+            git clone --depth 1 --branch 2024.01.12 https://github.com/microsoft/vcpkg.git C:/vcpkg
             cd C:/vcpkg
             ./bootstrap-vcpkg.bat -disableMetrics
           else
@@ -121,8 +125,7 @@ jobs:
           fi
 
           echo "=== Installing plugin dependencies via vcpkg (using manifest) ==="
-          # Use $RUNNER_TEMP (set by GitHub Actions) for binary cache path
-          # Convert Windows path to Unix-style for bash
+          # Use cached binary directory
           VCPKG_BINARY_CACHE="${RUNNER_TEMP//\\//}/vcpkg-binaries"
           mkdir -p "$VCPKG_BINARY_CACHE"
           # Must run from repo root where vcpkg.json is located
