@@ -14,13 +14,14 @@ on:
   workflow_dispatch:
 
 env:
-  VCPKG_VERSION: "2024.10.15"
+  # Use 2024.06.14 baseline which has good binary cache coverage for our dependencies
+  VCPKG_VERSION: "2024.06.14"
 
 jobs:
   setup-vcpkg:
     name: Setup vcpkg & Install Dependencies
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -66,7 +67,7 @@ jobs:
 
       - name: Install vcpkg dependencies
         shell: pwsh
-        timeout-minutes: 25
+        timeout-minutes: 50
         run: |
           cd C:/vcpkg
           ./vcpkg install --triplet x64-windows `
