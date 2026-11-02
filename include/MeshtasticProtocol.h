@@ -148,6 +148,11 @@ public:
     }
 };
 
+// Forward declaration for meshtastic::MeshPacket (defined in generated mesh.pb.h)
+namespace meshtastic {
+    class MeshPacket;
+}
+
 // Protocol parser
 class MeshtasticProtocolParser {
 public:
@@ -155,6 +160,7 @@ public:
     static bool parsePacket(const uint8_t* data, size_t len, google::protobuf::Message& packet);
 
     // Parse application payload from decrypted MeshPacket payload
+    // Uses forward declaration to avoid including generated protobuf headers in this header
     static bool parseAppPayload(const meshtastic::MeshPacket& meshPacket, google::protobuf::Message& appPacket);
 
     // Extract human-readable payload from MeshPacket
