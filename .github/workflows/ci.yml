@@ -83,25 +83,45 @@ jobs:
           sudo make install
 
       # =========================================================================
-      # WINDOWS: Use vcpkg action for fast binary caching
+      # WINDOWS: Use GitHub's pre-installed vcpkg with binary cache
       # =========================================================================
       - name: Setup vcpkg (Windows)
         if: runner.os == 'Windows'
-        uses: microsoft/vcpkg@v3
-        with:
-          version: '2024.06.14'
-          triplet: x64-windows
-          manifestMode: 'true'
-          vcpkgDirectory: 'C:/vcpkg'
-          cachedDirectory: '${{ runner.temp }}/vcpkg-cache'
-          runVcpkgInstall: true
-          arguments: '--x-wait-for-lock'
-        timeout-minutes: 15
-
-      - name: Set VCPKG_ROOT (Windows)
-        if: runner.os == 'Windows'
         shell: bash
+        timeout-minutes: 15
         run: |
+          set -eu
+          set -x
+
+          echo "=== Using GitHub pre-installed vcpkg ==="
+          # GitHub Actions windows-latest has vcpkg pre-installed at C:/vcpkg
+          if [ ! -d "C:/vcpkg" ]; then
+            echo "vcpkg not found at C:/vcpkg, installing..."
+            git clone --depth 1 --branch 2024.06.14 https://github.com/microsoft/vcpkg.git C:/vcpkg
+            cd C:/vcpkg
+            ./bootstrap-vcpkg.bat -disableMetrics
+          else
+            echo "Using pre-installed vcpkg at C:/vcpkg"
+            cd C:/vcpkg
+            # Use a pinned commit with good binary cache (2024.06.14 baseline)
+            git fetch --depth 1 origin 2024.06.14 2>/dev/null || true
+            git checkout 2024.06.14 2>/dev/null || true
+            ./bootstrap-vcpkg.bat -disableMetrics 2>/dev/null || true
+          fi
+
+          echo "=== Installing plugin dependencies via vcpkg (using manifest) ==="
+          # Use cached binary directory
+          VCPKG_BINARY_CACHE="${RUNNER_TEMP//\\//}/vcpkg-binaries"
+          mkdir -p "$VCPKG_BINARY_CACHE"
+          # Must run from repo root where vcpkg.json is located
+          cd "${GITHUB_WORKSPACE}"
+          # Use proper quoting for binarysource to avoid bash interpreting semicolon
+          C:/vcpkg/vcpkg install \
+            --triplet x64-windows \
+            "--binarysource=clear;files,$VCPKG_BINARY_CACHE,readwrite" \
+            --x-wait-for-lock \
+            --feature-flags=manifests
+
           echo "VCPKG_ROOT=C:/vcpkg" >> $GITHUB_ENV
 
       # =========================================================================
