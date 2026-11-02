@@ -14,74 +14,15 @@ on:
   workflow_dispatch:
 
 env:
-  # Use 2024.06.14 baseline which has good binary cache coverage for our dependencies
+  # Use a vcpkg baseline with good binary cache coverage
   VCPKG_VERSION: "2024.06.14"
+  SDRPP_PORTABLE_URL: "https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/SDRPlusPlus_win64.zip"
 
 jobs:
-  setup-vcpkg:
-    name: Setup vcpkg & Install Dependencies
-    runs-on: windows-latest
-    timeout-minutes: 60
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Cache vcpkg packages
-        id: vcpkg-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            C:/vcpkg/installed
-            C:/vcpkg/packages
-            C:/vcpkg/downloads
-            C:/vcpkg/binarycache
-          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_VERSION }}-${{ hashFiles('vcpkg.json') }}
-          restore-keys: |
-            vcpkg-${{ runner.os }}-${{ env.VCPKG_VERSION }}-
-            vcpkg-${{ runner.os }}-
-
-      - name: Setup vcpkg
-        id: setup-vcpkg
-        shell: pwsh
-        timeout-minutes: 10
-        run: |
-          if (-not (Test-Path "C:/vcpkg")) {
-            Write-Host "vcpkg not found, installing..."
-            git clone --depth 1 --branch ${{ env.VCPKG_VERSION }} https://github.com/microsoft/vcpkg.git C:/vcpkg
-            cd C:/vcpkg
-            ./bootstrap-vcpkg.bat -disableMetrics
-          } else {
-            Write-Host "Using pre-installed vcpkg at C:/vcpkg"
-            cd C:/vcpkg
-            git fetch --depth 1 origin ${{ env.VCPKG_VERSION }} 2>$null || $true
-            git checkout ${{ env.VCPKG_VERSION }} 2>$null || $true
-            ./bootstrap-vcpkg.bat -disableMetrics 2>$null || $true
-          }
-          $binaryCacheDir = "C:/vcpkg/binarycache"
-          New-Item -ItemType Directory -Force -Path $binaryCacheDir | Out-Null
-          $env:VCPKG_BINARY_SOURCES = "clear;files,$binaryCacheDir,readwrite"
-          $env:VCPKG_FEATURE_FLAGS = "manifests,binarycaching"
-          echo "VCPKG_ROOT=C:/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Install vcpkg dependencies
-        shell: pwsh
-        timeout-minutes: 50
-        run: |
-          cd C:/vcpkg
-          ./vcpkg install --triplet x64-windows `
-            --x-manifest-root="${{ github.workspace }}" `
-            --x-wait-for-lock `
-            --feature-flags=manifests,binarycaching `
-            --binarysource="clear;files,C:/vcpkg/binarycache,readwrite"
-          ./vcpkg list --triplet x64-windows
-
   build_windows:
     name: Build Windows (MSVC, ${{ matrix.build_type }})
-    needs: setup-vcpkg
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -106,28 +47,146 @@ jobs:
             vcpkg-${{ runner.os }}-${{ env.VCPKG_VERSION }}-
             vcpkg-${{ runner.os }}-
 
-      - name: Setup vcpkg (Windows)
+      - name: Setup vcpkg
         shell: pwsh
-        timeout-minutes: 5
+        timeout-minutes: 10
         run: |
+          # Use pre-installed vcpkg or install specific version
           if (-not (Test-Path "C:/vcpkg")) {
             Write-Host "vcpkg not found, installing..."
             git clone --depth 1 --branch ${{ env.VCPKG_VERSION }} https://github.com/microsoft/vcpkg.git C:/vcpkg
             cd C:/vcpkg
             ./bootstrap-vcpkg.bat -disableMetrics
           } else {
-            Write-Host "Using cached vcpkg at C:/vcpkg"
+            Write-Host "Using pre-installed vcpkg at C:/vcpkg"
             cd C:/vcpkg
+            git fetch --depth 1 origin ${{ env.VCPKG_VERSION }} 2>$null || $true
             git checkout ${{ env.VCPKG_VERSION }} 2>$null || $true
             ./bootstrap-vcpkg.bat -disableMetrics 2>$null || $true
           }
+
+          # Enable binary caching
           $binaryCacheDir = "C:/vcpkg/binarycache"
           New-Item -ItemType Directory -Force -Path $binaryCacheDir | Out-Null
           $env:VCPKG_BINARY_SOURCES = "clear;files,$binaryCacheDir,readwrite"
           $env:VCPKG_FEATURE_FLAGS = "manifests,binarycaching"
           echo "VCPKG_ROOT=C:/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Build test
+      - name: Install vcpkg dependencies
+        shell: pwsh
+        timeout-minutes: 30
+        run: |
+          cd C:/vcpkg
+          ./vcpkg install --triplet x64-windows `
+            --x-manifest-root="${{ github.workspace }}" `
+            --x-wait-for-lock `
+            --feature-flags=manifests,binarycaching `
+            --binarysource="clear;files,C:/vcpkg/binarycache,readwrite"
+          ./vcpkg list --triplet x64-windows
+
+      - name: Download portable SDR++
+        id: sdrpp
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          $url = "${env:SDRPP_PORTABLE_URL}"
+          $output = "sdrpp_portable.zip"
+          Write-Host "Downloading SDR++ portable from: $url"
+          try {
+            Invoke-WebRequest -Uri $url -OutFile $output -UseBasicParsing
+          } catch {
+            Write-Error "Failed to download SDR++ portable: $_"
+            exit 1
+          }
+          Write-Host "Extracting SDR++ portable..."
+          Expand-Archive -Path $output -DestinationPath sdrpp_portable -Force
+          $sdrppDir = Get-ChildItem -Path sdrpp_portable -Directory | Select-Object -First 1
+          if (-not $sdrppDir) {
+            Write-Error "Could not find extracted SDR++ directory"
+            exit 1
+          }
+          $sdrppRoot = Join-Path (Get-Location) $sdrppDir.FullName
+          Write-Host "SDR++ extracted to: $sdrppRoot"
+          if (-not (Test-Path (Join-Path $sdrppRoot "include"))) {
+            Write-Warning "No include directory found at root, checking subdirectories..."
+            $includeDir = Get-ChildItem -Path $sdrppRoot -Recurse -Directory -Filter "include" | Select-Object -First 1
+            if ($includeDir) {
+              $sdrppRoot = $includeDir.Parent.FullName
+              Write-Host "Found include at parent: $sdrppRoot"
+            }
+          }
+          $cmakeDir = Get-ChildItem -Path $sdrppRoot -Recurse -Directory -Filter "SDRPlusPlus" | Where-Object { $_.FullName -match "cmake" } | Select-Object -First 1
+          if ($cmakeDir) {
+            $cmakeConfigDir = $cmakeDir.FullName
+          } else {
+            $cmakeConfigDir = Join-Path $sdrppRoot "lib/cmake/SDRPlusPlus"
+            if (-not (Test-Path $cmakeConfigDir)) {
+              New-Item -ItemType Directory -Force -Path $cmakeConfigDir | Out-Null
+              $cfgContent = @"
+# Minimal SDRPlusPlus config for plugin building
+set(SDRPlusPlus_VERSION "nightly")
+set(SDRPlusPlus_INCLUDE_DIRS "${sdrppRoot}/include")
+set(SDRPlusPlus_LIBRARY_DIRS "${sdrppRoot}/lib")
+set(SDRPlusPlus_PLUGIN_SUFFIX ".dll")
+set(SDRPlusPlus_PLUGIN_INSTALL_DIR "${sdrppRoot}/plugins")
+find_package(Protobuf REQUIRED)
+find_package(Cryptopp REQUIRED)
+find_package(Threads REQUIRED)
+find_package(fmt QUIET)
+find_package(spdlog QUIET)
+find_package(nlohmann_json QUIET)
+"@
+              $cfgContent | Out-File -FilePath (Join-Path $cmakeConfigDir "SDRPlusPlusConfig.cmake") -Encoding UTF8
+            }
+          }
+          Write-Host "SDRPP_ROOT=$sdrppRoot" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "SDRPP_CMAKE_DIR=$cmakeConfigDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Configure plugin build
         shell: pwsh
         run: |
-          Write-Host "Build test successful"
+          cmake -S . -B build_${{ matrix.build_type }} `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} `
+            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake `
+            -DSDRPP_CORE_ROOT="${{ steps.sdrpp.outputs.SDRPP_ROOT }}" `
+            -DSDRPP_CMAKE_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"
+
+      - name: Build plugin
+        shell: pwsh
+        timeout-minutes: 20
+        run: |
+          cmake --build build_${{ matrix.build_type }} --config ${{ matrix.build_type }} --parallel
+
+      - name: Run tests
+        shell: pwsh
+        run: |
+          cd build_${{ matrix.build_type }}
+          ctest --output-on-failure --parallel || $true
+
+      - name: Package artifacts
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          cmake --build build_${{ matrix.build_type }} --config ${{ matrix.build_type }} --target package
+
+      - name: Upload artifacts
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: meshtastic-decoder-windows-${{ matrix.build_type }}
+          path: |
+            build_${{ matrix.build_type }}/*.dll
+            build_${{ matrix.build_type }}/*.zip
+            build_${{ matrix.build_type }}/*.exe
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-windows-${{ matrix.build_type }}
+          path: |
+            build_${{ matrix.build_type }}/CMakeFiles/*.log
+            C:/vcpkg/installed/vcpkg/issues/*.json
+          retention-days: 7
