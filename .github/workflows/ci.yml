@@ -83,81 +83,25 @@ jobs:
           sudo make install
 
       # =========================================================================
-      # WINDOWS: Use GitHub's pre-installed vcpkg for speed
+      # WINDOWS: Use vcpkg action for fast binary caching
       # =========================================================================
-      - name: Install 7zip and pre-cache vcpkg 7zip (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          # Install 7zip via chocolatey (required by vcpkg for package extraction)
-          choco install 7zip -y --no-progress
-          # Verify installation
-          7z | head -5
-
-          # Pre-download the exact 7zip version vcpkg expects (v23.1.0)
-          # to avoid network download failures from 7-zip.org
-          $vcpkgDownloads = "C:\vcpkg\downloads"
-          if (-not (Test-Path $vcpkgDownloads)) {
-            New-Item -ItemType Directory -Path $vcpkgDownloads -Force
-          }
-          $sevenZipUrl = "https://github.com/ip7z/7zip/releases/download/23.01/7z2301-extra.7z"
-          $targetPath = Join-Path $vcpkgDownloads "7z2301-extra.7z"
-          if (-not (Test-Path $targetPath)) {
-            Write-Host "Downloading 7zip v23.01 from GitHub mirror..."
-            try {
-              Invoke-WebRequest -Uri $sevenZipUrl -OutFile $targetPath -UseBasicParsing
-              Write-Host "Downloaded 7zip to $targetPath"
-            } catch {
-              Write-Warning "Failed to download 7zip from GitHub, will try 7-zip.org mirror in vcpkg"
-            }
-          } else {
-            Write-Host "7zip v23.01 already cached at $targetPath"
-          }
-
       - name: Setup vcpkg (Windows)
         if: runner.os == 'Windows'
+        uses: microsoft/vcpkg@v3
+        with:
+          version: '2024.06.14'
+          triplet: x64-windows
+          manifestMode: 'true'
+          vcpkgDirectory: 'C:/vcpkg'
+          cachedDirectory: '${{ runner.temp }}/vcpkg-cache'
+          runVcpkgInstall: true
+          arguments: '--x-wait-for-lock'
+        timeout-minutes: 15
+
+      - name: Set VCPKG_ROOT (Windows)
+        if: runner.os == 'Windows'
         shell: bash
-        timeout-minutes: 30
         run: |
-          set -eu
-          set -x
-
-          echo "=== Using GitHub pre-installed vcpkg ==="
-          # GitHub Actions windows-latest has vcpkg pre-installed at C:/vcpkg
-          # Check if it exists and use it
-          if [ ! -d "C:/vcpkg" ]; then
-            echo "vcpkg not found at C:/vcpkg, installing..."
-            git clone --depth 1 https://github.com/microsoft/vcpkg.git C:/vcpkg
-            cd C:/vcpkg
-            ./bootstrap-vcpkg.bat -disableMetrics
-          else
-            echo "Using pre-installed vcpkg at C:/vcpkg"
-            cd C:/vcpkg
-            # Use a pinned commit with good binary cache (2024.06.14 baseline)
-            # This commit has the pkgconf fix and binary cache available on GitHub Actions
-            git fetch --depth 1 origin 2024.06.14 2>/dev/null || true
-            git checkout 2024.06.14 2>/dev/null || true
-            ./bootstrap-vcpkg.bat -disableMetrics 2>/dev/null || true
-          fi
-
-          # Ensure 7zip is available for vcpkg (check downloads folder)
-          if [ -f "C:/vcpkg/downloads/7z2301-extra.7z" ]; then
-            echo "Found pre-cached 7zip at C:/vcpkg/downloads/7z2301-extra.7z"
-          fi
-
-          echo "=== Installing plugin dependencies via vcpkg (using manifest) ==="
-          # Use cached binary directory
-          VCPKG_BINARY_CACHE="${RUNNER_TEMP//\\//}/vcpkg-binaries"
-          mkdir -p "$VCPKG_BINARY_CACHE"
-          # Must run from repo root where vcpkg.json is located
-          cd "${GITHUB_WORKSPACE}"
-          # Use proper quoting for binarysource to avoid bash interpreting semicolon
-          C:/vcpkg/vcpkg install \
-            --triplet x64-windows \
-            "--binarysource=clear;files,$VCPKG_BINARY_CACHE,readwrite" \
-            --x-wait-for-lock \
-            --feature-flags=manifests
-
           echo "VCPKG_ROOT=C:/vcpkg" >> $GITHUB_ENV
 
       # =========================================================================
