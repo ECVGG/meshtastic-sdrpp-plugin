@@ -16,7 +16,7 @@ on:
 env:
   # Use a vcpkg baseline with good binary cache coverage
   VCPKG_VERSION: "2024.06.14"
-  SDRPP_PORTABLE_URL: "https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/SDRPlusPlus_win64.zip"
+  SDRPP_PORTABLE_URL: "https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/sdrpp_windows_x64.zip"
 
 jobs:
   build_windows:
