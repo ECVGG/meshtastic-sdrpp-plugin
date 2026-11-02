@@ -68,7 +68,7 @@ jobs:
           Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
           Expand-Archive -Path $zip -DestinationPath sdrpp -Force
           $dir = Get-ChildItem sdrpp -Directory | Select-Object -First 1
-          $root = Join-Path (Get-Location) $dir.FullName
+          $root = $dir.FullName
           if (-not (Test-Path (Join-Path $root "include"))) {
             $inc = Get-ChildItem $root -Recurse -Directory -Filter "include" | Select-Object -First 1
             if ($inc) { $root = $inc.Parent.FullName }
