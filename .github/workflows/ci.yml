@@ -85,7 +85,7 @@ jobs:
       # =========================================================================
       # WINDOWS: Use GitHub's pre-installed vcpkg for speed
       # =========================================================================
-      - name: Install 7zip (Windows)
+      - name: Install 7zip and pre-cache vcpkg 7zip (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -93,15 +93,31 @@ jobs:
           choco install 7zip -y --no-progress
           # Verify installation
           7z | head -5
-          # Output the 7zip path for vcpkg
-          echo "VCPKG_7ZIP_PATH=C:\Program Files\7-Zip\7z.exe" >> $env:GITHUB_ENV
+
+          # Pre-download the exact 7zip version vcpkg expects (v23.1.0)
+          # to avoid network download failures from 7-zip.org
+          $vcpkgDownloads = "C:\vcpkg\downloads"
+          if (-not (Test-Path $vcpkgDownloads)) {
+            New-Item -ItemType Directory -Path $vcpkgDownloads -Force
+          }
+          $sevenZipUrl = "https://github.com/ip7z/7zip/releases/download/23.01/7z2301-extra.7z"
+          $targetPath = Join-Path $vcpkgDownloads "7z2301-extra.7z"
+          if (-not (Test-Path $targetPath)) {
+            Write-Host "Downloading 7zip v23.01 from GitHub mirror..."
+            try {
+              Invoke-WebRequest -Uri $sevenZipUrl -OutFile $targetPath -UseBasicParsing
+              Write-Host "Downloaded 7zip to $targetPath"
+            } catch {
+              Write-Warning "Failed to download 7zip from GitHub, will try 7-zip.org mirror in vcpkg"
+            }
+          } else {
+            Write-Host "7zip v23.01 already cached at $targetPath"
+          }
 
       - name: Setup vcpkg (Windows)
         if: runner.os == 'Windows'
         shell: bash
         timeout-minutes: 120
-        env:
-          VCPKG_7ZIP_PATH: ${{ env.VCPKG_7ZIP_PATH }}
         run: |
           set -eu
           set -x
@@ -121,6 +137,11 @@ jobs:
             git fetch --depth 1 origin 2024.01.12 2>/dev/null || true
             git checkout 2024.01.12 2>/dev/null || true
             ./bootstrap-vcpkg.bat -disableMetrics 2>/dev/null || true
+          fi
+
+          # Ensure 7zip is available for vcpkg (check downloads folder)
+          if [ -f "C:/vcpkg/downloads/7z2301-extra.7z" ]; then
+            echo "Found pre-cached 7zip at C:/vcpkg/downloads/7z2301-extra.7z"
           fi
 
           echo "=== Installing plugin dependencies via vcpkg (using manifest) ==="
