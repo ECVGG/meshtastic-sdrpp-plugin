@@ -156,7 +156,9 @@ jobs:
           if ($vcvarsPath -and (Test-Path $vcvarsPath)) {
             Write-Host "Setting up Visual Studio environment from: $vcvarsPath"
             # Use cmd /c to run vcvarsall then cmake in same process so env vars persist
-            $fullCmd = "& cmd /c `"`"$vcvarsPath`" x64 && $cmakeCmd`""
+            # Quote the vcvarsPath because it may contain spaces (e.g., "Program Files")
+            $quotedVcvarsPath = "`"$vcvarsPath`""
+            $fullCmd = "& cmd /c $quotedVcvarsPath x64 && $cmakeCmd"
             Write-Host "Running cmake with VS environment..."
             Write-Host "Command: $cmakeCmd"
             Invoke-Expression $fullCmd
