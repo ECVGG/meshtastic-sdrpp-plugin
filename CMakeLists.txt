@@ -58,7 +58,7 @@ target_include_directories(meshtastic_decoder PRIVATE
 # Link libraries using imported targets (vcpkg provides these)
 target_link_libraries(meshtastic_decoder PRIVATE
     protobuf::libprotobuf
-    Cryptopp::Cryptopp
+    cryptopp::cryptopp
     fmt::fmt
     spdlog::spdlog
     absl::absl_dll
