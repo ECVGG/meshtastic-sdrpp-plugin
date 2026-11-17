@@ -140,7 +140,7 @@ public:
         networkKeyInput = pluginConf.value("networkKeyInput", "");
 
         loraConfig.spreadingFactor = pluginConf.value("spreadingFactor", 7);
-        loraConfig.bandwidth = pluginConf.value("bandwidth", 125000);
+        loraConfig.bandwidth = pluginConf.value("bandwidth", 250000);
         loraConfig.codingRate = pluginConf.value("codingRate", 5);
         loraConfig.preambleLength = pluginConf.value("preambleLength", 8);
         loraConfig.syncWord = pluginConf.value("syncWord", 0x34);

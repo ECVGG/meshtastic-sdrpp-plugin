@@ -4,7 +4,7 @@ A SDR++ decoder module for decoding and decrypting Meshtastic LoRa packets in re
 
 ## Features
 
-- **Real-time LoRa demodulation** (SF7-SF12, BW 125kHz, CR 4/5)
+- **Real-time LoRa demodulation** (SF7-SF12, BW 250kHz, CR 4/5)
 - **Meshtastic protocol parsing** - Mesh header + Protobuf payloads
 - **AES-CTR decryption** - AppKey (128/256-bit) and NetworkKey support
 - **PBKDF2-SHA256 key derivation** from PSK (1000 iterations, salt "Meshtastic")
@@ -53,7 +53,7 @@ Right-click the module → "Meshtastic Decoder" to access:
 For default Meshtastic channels:
 - **PSK**: `1PG7OiApB1nwvP+rz05pAQLK` (Base64)
 - **Sync Word**: `0x34`
-- **SF**: 7, **BW**: 125kHz, **CR**: 4/5
+- **SF**: 7, **BW**: 250kHz, **CR**: 4/5
 
 ## Supported Message Types
 
@@ -76,7 +76,7 @@ For default Meshtastic channels:
 | Parameter | Value |
 |-----------|-------|
 | Spreading Factor | 7 |
-| Bandwidth | 125 kHz |
+| Bandwidth | 250 kHz |
 | Coding Rate | 4/5 |
 | Sync Word | 0x34 |
 | Preamble | 8 symbols |
