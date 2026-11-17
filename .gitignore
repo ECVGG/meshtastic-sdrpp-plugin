@@ -22,6 +22,7 @@ out/
 
 # vcpkg
 vcpkg/
+vcpkg_installed/
 packages/
 
 # Generated protobuf files (generated at build time)
