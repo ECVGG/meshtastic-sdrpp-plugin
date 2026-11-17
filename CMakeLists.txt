@@ -36,8 +36,11 @@ protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${MESHTASTIC_PROTO_FILES})
 file(GLOB_RECURSE SRC "src/*.cpp" "src/*.h" "include/*.h")
 list(APPEND SRC ${PROTO_SRCS} ${PROTO_HDRS})
 
-# Include SDR++ module build system - this creates the target
+# Include SDR++ module build system - this provides sdrpp_add_module function
 include(${SDRPP_MODULE_CMAKE})
+
+# Create the module target using SDR++'s function
+sdrpp_add_module(meshtastic_decoder ${SRC})
 
 # Add /utf-8 for fmt Unicode support
 if (MSVC)
