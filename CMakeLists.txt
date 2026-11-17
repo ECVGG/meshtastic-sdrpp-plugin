@@ -11,9 +11,23 @@ find_package(fmt REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(abseil REQUIRED)
 
+# Proto files from Meshtastic firmware submodule (proto/meshtastic/protobufs/meshtastic/)
+set(MESHTASTIC_PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/protobufs/meshtastic")
+
 set(MESHTASTIC_PROTO_FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/proto/mesh.proto"
-    "${CMAKE_CURRENT_SOURCE_DIR}/proto/telemetry.proto"
+    "${MESHTASTIC_PROTO_DIR}/mesh.proto"
+    "${MESHTASTIC_PROTO_DIR}/telemetry.proto"
+    "${MESHTASTIC_PROTO_DIR}/channel.proto"
+    "${MESHTASTIC_PROTO_DIR}/portnums.proto"
+    "${MESHTASTIC_PROTO_DIR}/admin.proto"
+    "${MESHTASTIC_PROTO_DIR}/config.proto"
+    "${MESHTASTIC_PROTO_DIR}/deviceonly.proto"
+    "${MESHTASTIC_PROTO_DIR}/interdevice.proto"
+    "${MESHTASTIC_PROTO_DIR}/localonly.proto"
+    "${MESHTASTIC_PROTO_DIR}/mqtt.proto"
+    "${MESHTASTIC_PROTO_DIR}/remote_hardware.proto"
+    "${MESHTASTIC_PROTO_DIR}/serial_hal.proto"
+    "${MESHTASTIC_PROTO_DIR}/storeforward.proto"
 )
 
 protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${MESHTASTIC_PROTO_FILES})

@@ -17,6 +17,7 @@
 #include <chrono>
 #include <deque>
 #include <vector>
+#include <array>
 
 #include <signal_path/signal_path.h>
 #include <dsp/sink/handler_sink.h>
@@ -124,6 +125,35 @@ static bool InputText(const char* label, std::string* str) {
     return false;
 }
 
+// Known Meshtastic channels with their public PSKs and default LoRa parameters
+struct KnownChannel {
+    const char* name;
+    const char* psk;          // Base64 encoded PSK
+    int spreadingFactor;
+    int bandwidth;
+    int codingRate;           // 5 = 4/5, 6 = 4/6, etc.
+    uint8_t syncWord;
+    const char* description;
+};
+
+static const KnownChannel KNOWN_CHANNELS[] = {
+    { "LongFast (Default)", "1PG7OiApB1nwvP+rz05pAQLK", 7, 250000, 5, 0x34, "Public long range fast channel - most popular" },
+    { "LongSlow", "AQ==", 11, 125000, 5, 0x34, "Public long range slow channel" },
+    { "Medium", "Ag==", 9, 250000, 5, 0x34, "Public medium range channel" },
+    { "ShortFast", "BA==", 7, 500000, 5, 0x34, "Public short range fast channel" },
+    { "ShortSlow", "BQ==", 8, 250000, 5, 0x34, "Public short range slow channel" },
+    { "Bots (DE)", "AQ==", 7, 250000, 5, 0x34, "Germany Bots channel" },
+    { "LinkinSat", "Bw==", 7, 250000, 5, 0x34, "LinkinSat community channel" },
+    { "Custom", "", 7, 250000, 5, 0x34, "Custom channel - enter your own PSK and parameters" }
+};
+
+static const int KNOWN_CHANNELS_COUNT = sizeof(KNOWN_CHANNELS) / sizeof(KNOWN_CHANNELS[0]);
+
+// Common bandwidth values for dropdown
+static const int BANDWIDTH_OPTIONS[] = { 125000, 250000, 500000, 7500, 10400, 15600, 20800, 31250, 41700, 62500 };
+static const int BANDWIDTH_OPTIONS_COUNT = sizeof(BANDWIDTH_OPTIONS) / sizeof(BANDWIDTH_OPTIONS[0]);
+static const char* BANDWIDTH_LABELS[] = { "125 kHz", "250 kHz", "500 kHz", "7.5 kHz", "10.4 kHz", "15.6 kHz", "20.8 kHz", "31.25 kHz", "41.7 kHz", "62.5 kHz" };
+
 class MeshtasticDecoderModule : public ModuleManager::Instance {
 public:
     MeshtasticDecoderModule(std::string name)
@@ -132,6 +162,7 @@ public:
         // Load config
         auto& pluginConf = config->get()[name];
 
+        selectedChannelIndex = pluginConf.value("selectedChannelIndex", 0);
         channelIndex = pluginConf.value("channelIndex", 0);
         channelName = pluginConf.value("channelName", "Primary");
         pskInput = pluginConf.value("pskInput", "");
@@ -236,20 +267,59 @@ public:
     }
 
 private:
+    void applyChannelPreset(int channelIdx) {
+        if (channelIdx < 0 || channelIdx >= KNOWN_CHANNELS_COUNT) return;
+
+        const auto& ch = KNOWN_CHANNELS[channelIdx];
+
+        // Don't apply if Custom is selected
+        if (channelIdx == KNOWN_CHANNELS_COUNT - 1) return;
+
+        // Apply channel preset
+        pskInput = ch.psk;
+        loraConfig.spreadingFactor = ch.spreadingFactor;
+        loraConfig.bandwidth = ch.bandwidth;
+        loraConfig.codingRate = ch.codingRate;
+        loraConfig.syncWord = ch.syncWord;
+
+        // Derive keys from PSK
+        if (!pskInput.empty()) {
+            decryptor.setPSK(pskInput, useAES256);
+        }
+
+        // Update LoRa demodulator
+        updateLoRaConfig();
+        saveConfig();
+    }
+
     static void menuHandler(void* ctx) {
         MeshtasticDecoderModule* _this = static_cast<MeshtasticDecoderModule*>(ctx);
 
         // Auto-save config periodically
         _this->config->autoSave();
 
-        float menuWidth = ImGui::GetContentRegionAvail().x;
-
         if (!_this->enabled) { ImGui::BeginDisabled(); }
 
-        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        // Channel Preset Selector
+        if (ImGui::CollapsingHeader("Channel Preset", ImGuiTreeNodeFlags_DefaultOpen)) {
+            // Channel dropdown
+            static const char* channelLabels[KNOWN_CHANNELS_COUNT];
+            for (int i = 0; i < KNOWN_CHANNELS_COUNT; ++i) {
+                channelLabels[i] = KNOWN_CHANNELS[i].name;
+            }
 
-        // Channel configuration
-        if (ImGui::CollapsingHeader("Channel Configuration")) {
+            if (ImGui::Combo("Preset Channel", &_this->selectedChannelIndex, channelLabels, KNOWN_CHANNELS_COUNT)) {
+                _this->applyChannelPreset(_this->selectedChannelIndex);
+            }
+
+            // Show description of selected channel
+            if (_this->selectedChannelIndex >= 0 && _this->selectedChannelIndex < KNOWN_CHANNELS_COUNT - 1) {
+                ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "%s", KNOWN_CHANNELS[_this->selectedChannelIndex].description);
+            }
+
+            ImGui::Separator();
+
+            // Channel configuration (editable even with presets)
             ImGui::Text("Channel Index: %d", _this->channelIndex);
             if (ImGui::InputInt("Channel Index", &_this->channelIndex, 1, 10)) {
                 _this->channelIndex = std::clamp(_this->channelIndex, 0, 7);
@@ -259,12 +329,21 @@ private:
             if (InputText("Channel Name", &_this->channelName)) {
                 _this->saveConfig();
             }
-            if (InputText("PSK", &_this->pskInput)) {
+            if (InputText("PSK (Base64)", &_this->pskInput)) {
                 _this->saveConfig();
+                _this->decryptor.setPSK(_this->pskInput, _this->useAES256);
             }
 
             if (ImGui::Checkbox("AES-256", &_this->useAES256)) {
                 _this->saveConfig();
+                if (!_this->pskInput.empty()) {
+                    _this->decryptor.setPSK(_this->pskInput, _this->useAES256);
+                }
+            }
+
+            // Show derived key info
+            if (!_this->pskInput.empty()) {
+                ImGui::TextColored(ImVec4(0.5f, 1.0f, 0.5f, 1.0f), "Keys derived from PSK via PBKDF2-SHA256 (1000 iters, salt='Meshtastic')");
             }
         }
 
@@ -279,7 +358,18 @@ private:
             }
             ImGui::Text("Spreading Factor: %d", _this->loraConfig.spreadingFactor);
 
-            if (ImGui::InputInt("Bandwidth", &_this->loraConfig.bandwidth)) {
+            // Bandwidth dropdown
+            int bwIdx = -1;
+            for (int i = 0; i < BANDWIDTH_OPTIONS_COUNT; ++i) {
+                if (BANDWIDTH_OPTIONS[i] == _this->loraConfig.bandwidth) {
+                    bwIdx = i;
+                    break;
+                }
+            }
+            if (bwIdx == -1) bwIdx = 1; // Default to 250 kHz
+
+            if (ImGui::Combo("Bandwidth", &bwIdx, BANDWIDTH_LABELS, BANDWIDTH_OPTIONS_COUNT)) {
+                _this->loraConfig.bandwidth = BANDWIDTH_OPTIONS[bwIdx];
                 _this->saveConfig();
                 _this->updateLoRaConfig();
             }
@@ -339,10 +429,10 @@ private:
             if (ImGui::Checkbox("AES-256", &_this->useAES256)) {
                 _this->saveConfig();
             }
-            if (InputText("App Key", &_this->appKeyInput)) {
+            if (InputText("App Key (hex)", &_this->appKeyInput)) {
                 _this->saveConfig();
             }
-            if (InputText("Network Key", &_this->networkKeyInput)) {
+            if (InputText("Network Key (hex)", &_this->networkKeyInput)) {
                 _this->saveConfig();
             }
         }
@@ -412,6 +502,7 @@ private:
 
     void saveConfig() {
         auto& pluginConf = config->get()[name];
+        pluginConf["selectedChannelIndex"] = selectedChannelIndex;
         pluginConf["channelIndex"] = channelIndex;
         pluginConf["channelName"] = channelName;
         pluginConf["pskInput"] = pskInput;
@@ -577,6 +668,7 @@ private:
     std::unique_ptr<PluginConfig> config;
 
     // Configuration
+    int selectedChannelIndex = 0;
     int channelIndex = 0;
     std::string channelName = "Primary";
     std::string pskInput = "";
