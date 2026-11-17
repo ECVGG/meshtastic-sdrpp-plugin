@@ -122,7 +122,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 | abseil | Apache-2.0 | Yes (with attribution) |
 | SDR++ API | GPL-3.0 | Plugin links dynamically |
 
-**Note**: This plugin dynamically links to SDR++ (GPL-3.0). The MIT license is compatible for your own code, but combined distribution may have GPL implications. Consult legal advice for commercial use.
 
 ## Contributing
 
