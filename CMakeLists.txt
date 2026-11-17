@@ -9,7 +9,7 @@ find_package(Protobuf REQUIRED)
 find_package(Cryptopp REQUIRED)
 find_package(fmt REQUIRED)
 find_package(spdlog REQUIRED)
-find_package(abseil REQUIRED)
+find_package(absl REQUIRED)
 
 # Proto files from Meshtastic firmware submodule (proto/meshtastic/protobufs/meshtastic/)
 set(MESHTASTIC_PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/protobufs/meshtastic")
@@ -58,5 +58,5 @@ target_link_libraries(meshtastic_decoder PRIVATE
     Cryptopp::Cryptopp
     fmt::fmt
     spdlog::spdlog
-    abseil::absl_dll
+    absl::absl_dll
 )
