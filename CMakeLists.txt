@@ -61,5 +61,8 @@ target_link_libraries(meshtastic_decoder PRIVATE
     cryptopp::cryptopp
     fmt::fmt
     spdlog::spdlog
-    absl::absl_dll
+    absl::absl_strings
+    absl::absl_memory
+    absl::absl_synchronization
+    absl::absl_time
 )
