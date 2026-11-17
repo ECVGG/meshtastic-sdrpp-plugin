@@ -1,57 +1,45 @@
 # Build directories
 build/
-build_*/
 out/
-*.build/
-
-# CMake files
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
-CTestTestfile.cmake
-*.cmake
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Compiled objects
-*.o
 *.obj
 *.lib
-*.dll
-*.so
-*.dylib
 *.exp
 *.pdb
 *.ilk
 
-# Package files
-*.tar.gz
-*.zip
-*.deb
-*.rpm
+# IDE
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# Compiled files
+*.dll
 *.exe
-*.msi
+*.so
+*.dylib
 
-# Generated files
-proto/meshtastic/*.pb.h
-proto/meshtastic/*.pb.cc
-include/Version.h
+# vcpkg
+vcpkg/
+packages/
 
-# Test files
-Testing/
-test_*.xml
+# Generated protobuf files (generated at build time)
+*.pb.h
+*.pb.cc
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Local config
+*.user
+*.local
+config.json
+meshtastic_decoder_config.json
 
 # Logs
 *.log
 
-# Local config
-meshtastic_config.json
+# Release artifacts (keep only source in repo, release via GitHub Releases)
+release/*.dll

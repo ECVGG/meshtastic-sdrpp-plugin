@@ -1,164 +1,140 @@
 <#
 .SYNOPSIS
-    Meshtastic SDR++ Plugin Build Script for Windows
-
+    Build Meshtastic SDR++ Plugin for Windows
 .DESCRIPTION
-    Builds the Meshtastic decoder plugin for SDR++ on Windows using MSVC and vcpkg.
-
-.PARAMETER BuildType
-    Build type: Release, RelWithDebInfo, Debug (default: Release)
-
-.PARAMETER Install
-    Install after building
-
-.PARAMETER Clean
-    Clean build directory before building
-
-.PARAMETER Generator
-    CMake generator (default: "Visual Studio 17 2022")
-
-.PARAMETER Arch
-    Architecture: x64, x86, ARM64 (default: x64)
-
-.EXAMPLE
-    .\build.ps1 -BuildType Release -Install
-
-.EXAMPLE
-    $env:SDRPP_CORE_ROOT="C:\SDRPlusPlus\build"; .\build.ps1 -BuildType RelWithDebInfo
+    Builds a portable .dll plugin using SDR++ portable nightly + vcpkg dependencies.
+    Run from "Developer Command Prompt for VS 2022" (x64).
 #>
 
 param(
-    [ValidateSet("Release", "RelWithDebInfo", "Debug")]
-    [string]$BuildType = "Release",
-
+    [ValidateSet('Debug', 'Release', 'RelWithDebInfo', 'MinSizeRel')]
+    [string]$BuildType = 'Release',
     [switch]$Install,
-
     [switch]$Clean,
-
-    [string]$Generator = "Visual Studio 17 2022",
-
-    [ValidateSet("x64", "x86", "ARM64")]
-    [string]$Arch = "x64",
-
-    [switch]$Help
+    [switch]$Package
 )
 
-if ($Help) {
-    Get-Help $MyInvocation.MyCommand.Definition -Full
+# =============================================================================
+# Configuración
+# =============================================================================
+$ProjectRoot = $PSScriptRoot
+$SDRPP_DIR = "C:\sdrpp_portable\sdrpp_windows_x64"
+$VCPKG_ROOT = "C:\vcpkg"
+
+# =============================================================================
+# Validaciones
+# =============================================================================
+Write-Host "=== Meshtastic SDR++ Plugin Builder ===" -ForegroundColor Cyan
+Write-Host "Project: $ProjectRoot" -ForegroundColor Gray
+Write-Host "Build Type: $BuildType" -ForegroundColor Gray
+Write-Host "SDR++ Dir: $SDRPP_DIR" -ForegroundColor Gray
+
+if (-not (Test-Path $SDRPP_DIR)) {
+    Write-Error "SDR++ portable not found at: $SDRPP_DIR"
+    Write-Host "Download from: https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/sdrpp_windows_x64.zip" -ForegroundColor Yellow
+    exit 1
+}
+
+if (-not (Test-Path "$VCPKG_ROOT\vcpkg.exe")) {
+    Write-Error "vcpkg not found at: $VCPKG_ROOT"
+    exit 1
+}
+
+# Verify we're in VS Developer Command Prompt
+if (-not $env:VCToolsInstallDir) {
+    Write-Warning "Not in Visual Studio Developer Command Prompt!"
+    Write-Host "Please run from: 'Developer Command Prompt for VS 2022' (x64)" -ForegroundColor Yellow
+    Write-Host "Or run: `"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat`" x64" -ForegroundColor Gray
+    exit 1
+}
+
+# =============================================================================
+# Set SDRPP_CORE_ROOT environment variable (REQUIRED for CMake)
+# =============================================================================
+$env:SDRPP_CORE_ROOT = $SDRPP_DIR
+Write-Host "SDRPP_CORE_ROOT = $env:SDRPP_CORE_ROOT" -ForegroundColor Green
+
+# =============================================================================
+# Clean
+# =============================================================================
+if ($Clean) {
+    Write-Host "Cleaning build directory..." -ForegroundColor Yellow
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "$ProjectRoot\build"
+    Write-Host "Done." -ForegroundColor Green
     exit 0
 }
 
-# Colors
-$ErrorColor = "Red"
-$WarningColor = "Yellow"
-$SuccessColor = "Green"
-$InfoColor = "Cyan"
+# =============================================================================
+# Install vcpkg dependencies
+# =============================================================================
+Write-Host "`n=== Installing vcpkg dependencies ===" -ForegroundColor Cyan
+& "$VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows --x-manifest-root="$ProjectRoot" --feature-flags=manifests,binarycaching
+if ($LASTEXITCODE -ne 0) { Write-Error "vcpkg install failed"; exit 1 }
 
-function Write-Info { param($msg) Write-Host "[$(Get-Date -Format 'HH:mm:ss')] $msg" -ForegroundColor $InfoColor }
-function Write-Success { param($msg) Write-Host "[$(Get-Date -Format 'HH:mm:ss')] $msg" -ForegroundColor $SuccessColor }
-function Write-Warning { param($msg) Write-Host "[$(Get-Date -Format 'HH:mm:ss')] $msg" -ForegroundColor $WarningColor }
-function Write-ErrorMsg { param($msg) Write-Host "[$(Get-Date -Format 'HH:mm:ss')] $msg" -ForegroundColor $ErrorColor }
-
-Write-Info "Building Meshtastic SDR++ Plugin"
-Write-Info "Build Type: $BuildType"
-Write-Info "Architecture: $Arch"
-Write-Info "Generator: $Generator"
-
-# Check SDRPP_CORE_ROOT
-if (-not $env:SDRPP_CORE_ROOT) {
-    Write-ErrorMsg "SDRPP_CORE_ROOT environment variable not set"
-    Write-Info "Set it to your SDR++ build or install directory"
-    Write-Info 'Example: $env:SDRPP_CORE_ROOT="C:\SDRPlusPlus\build"'
-    exit 1
-}
-
-if (-not (Test-Path $env:SDRPP_CORE_ROOT)) {
-    Write-ErrorMsg "SDRPP_CORE_ROOT directory does not exist: $env:SDRPP_CORE_ROOT"
-    exit 1
-}
-
-Write-Info "SDR++ root: $env:SDRPP_CORE_ROOT"
-
-# Check vcpkg
-$VcpkgRoot = $env:VCPKG_ROOT
-if (-not $VcpkgRoot) {
-    $VcpkgRoot = "C:\vcpkg"
-}
-if (-not (Test-Path "$VcpkgRoot\vcpkg.exe")) {
-    Write-Warning "vcpkg not found at $VcpkgRoot\vcpkg.exe"
-    Write-Info "Install vcpkg or set VCPKG_ROOT environment variable"
-}
-
-$BuildDir = "build_${Arch}_${BuildType}"
-
-# Clean if requested
-if ($Clean) {
-    Write-Info "Cleaning build directory..."
-    if (Test-Path $BuildDir) {
-        Remove-Item -Recurse -Force $BuildDir
-    }
-}
-
-# Create build directory
-if (-not (Test-Path $BuildDir)) {
-    New-Item -ItemType Directory -Path $BuildDir | Out-Null
-}
-
-Set-Location $BuildDir
-
+# =============================================================================
 # Configure with CMake
-Write-Info "Configuring with CMake..."
-$CmakeArgs = @(
-    "-G", $Generator,
-    "-A", $Arch,
-    "-DCMAKE_BUILD_TYPE=$BuildType",
-    "-DSDRPP_CORE_ROOT=$env:SDRPP_CORE_ROOT",
-    "-DCMAKE_TOOLCHAIN_FILE=$VcpkgRoot\scripts\buildsystems\vcpkg.cmake",
-    ".."
+# =============================================================================
+Write-Host "`n=== Configuring with CMake ===" -ForegroundColor Cyan
+$BuildDir = "$ProjectRoot\build"
+$ToolchainFile = "$VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
+
+$cmakeArgs = @(
+    "-S", $ProjectRoot
+    "-B", $BuildDir
+    "-G", "Visual Studio 17 2022"
+    "-A", "x64"
+    "-DCMAKE_BUILD_TYPE=$BuildType"
+    "-DCMAKE_TOOLCHAIN_FILE=$ToolchainFile"
+    "-DSDRPP_CORE_ROOT=$SDRPP_DIR"
+    # IMPORTANTE: Comillas alrededor de 3.5 para CMake 4.x
+    "-DCMAKE_POLICY_VERSION_MINIMUM=`"3.5`""
 )
 
-& cmake @CmakeArgs
-if ($LASTEXITCODE -ne 0) {
-    Write-ErrorMsg "CMake configuration failed"
-    exit 1
-}
+Write-Host "Running: cmake $($cmakeArgs -join ' ')" -ForegroundColor Gray
+& cmake @cmakeArgs
+if ($LASTEXITCODE -ne 0) { Write-Error "CMake configure failed"; exit 1 }
 
+# =============================================================================
 # Build
-Write-Info "Building..."
-& cmake --build . --config $BuildType --parallel
-if ($LASTEXITCODE -ne 0) {
-    Write-ErrorMsg "Build failed"
+# =============================================================================
+Write-Host "`n=== Building ===" -ForegroundColor Cyan
+& cmake --build $BuildDir --config $BuildType --parallel
+if ($LASTEXITCODE -ne 0) { Write-Error "Build failed"; exit 1 }
+
+# =============================================================================
+# Verify DLL
+# =============================================================================
+$DllPath = "$BuildDir\$BuildType\meshtastic.dll"
+if (Test-Path $DllPath) {
+    Write-Host "`n✓ BUILD SUCCESSFUL!" -ForegroundColor Green
+    Write-Host "Plugin: $DllPath" -ForegroundColor Green
+    $size = (Get-Item $DllPath).Length / 1MB
+    Write-Host "Size: $([math]::Round($size, 2)) MB" -ForegroundColor Gray
+} else {
+    Write-Error "DLL not found at expected path: $DllPath"
     exit 1
 }
 
-Write-Success "Build completed successfully!"
-
-# Find built plugin
-$PluginName = "meshtastic"
-$PluginFile = "${PluginName}.dll"
-
-if (Test-Path $PluginFile) {
-    Write-Success "Plugin built: $PluginFile"
-    Get-Item $PluginFile | Select-Object Name, Length, LastWriteTime
-} elseif (Test-Path "$BuildType\$PluginFile") {
-    $PluginFile = "$BuildType\$PluginFile"
-    Write-Success "Plugin built: $PluginFile"
-    Get-Item $PluginFile | Select-Object Name, Length, LastWriteTime
-} else {
-    Write-Warning "Plugin file not found in expected location"
-    Get-ChildItem -Recurse -Filter "${PluginName}.*" | Select-Object -First 5
+# =============================================================================
+# Install to SDR++ plugins folder
+# =============================================================================
+if ($Install) {
+    $PluginsDir = "$SDRPP_DIR\plugins"
+    if (-not (Test-Path $PluginsDir)) { New-Item -ItemType Directory -Path $PluginsDir | Out-Null }
+    Copy-Item -Force $DllPath -Destination "$PluginsDir\meshtastic.dll"
+    Write-Host "`n✓ Installed to: $PluginsDir\meshtastic.dll" -ForegroundColor Green
 }
 
-# Install if requested
-if ($Install) {
-    Write-Info "Installing..."
-    & cmake --build . --config $BuildType --target INSTALL
+# =============================================================================
+# Package (CPack)
+# =============================================================================
+if ($Package) {
+    Write-Host "`n=== Creating package ===" -ForegroundColor Cyan
+    & cmake --build $BuildDir --config $BuildType --target package
     if ($LASTEXITCODE -eq 0) {
-        Write-Success "Installation completed"
-    } else {
-        Write-ErrorMsg "Installation failed"
-        exit 1
+        $zip = Get-ChildItem "$BuildDir\*.zip" | Select-Object -First 1
+        if ($zip) { Write-Host "Package: $($zip.FullName)" -ForegroundColor Green }
     }
 }
 
-Write-Info "Done!"
+Write-Host "`nDone!" -ForegroundColor Cyan

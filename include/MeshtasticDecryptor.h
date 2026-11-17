@@ -1,49 +1,75 @@
 #pragma once
 
-#include <array>
-#include <vector>
 #include <string>
+#include <vector>
 #include <cstdint>
-#include <memory>
-#include <google/protobuf/message.h>
-
-namespace MeshtasticDecryptor {
-
-enum class KeyType {
-    AES128,
-    AES256
-};
+#include <array>
+#include <string_view>
 
 class MeshtasticDecryptor {
 public:
-    MeshtasticDecryptor();
-    ~MeshtasticDecryptor();
+    MeshtasticDecryptor() = default;
+    ~MeshtasticDecryptor() = default;
 
-    // Set encryption key
-    bool setKey(const std::array<uint8_t, 16>& key128);
-    bool setKey(const std::array<uint8_t, 32>& key256);
+    // Initialize with default or provided keys
+    bool init();
 
-    // Decrypt a MeshPacket (modifies the packet in place)
-    bool decrypt(google::protobuf::Message& packet);
+    // Set encryption keys
+    void setAppKey(const std::array<uint8_t, 32>& key);      // AES-256
+    void setAppKey(const std::array<uint8_t, 16>& key);      // AES-128
+    void setNetworkKey(const std::array<uint8_t, 16>& key);  // Always AES-128
 
-    // Static key derivation from PSK
-    // Meshtastic uses PBKDF2-HMAC-SHA256 with salt "Meshtastic" and 1000 iterations
-    static std::vector<uint8_t> deriveKeyFromPSK(const std::string& pskBase64, KeyType keyType);
+    // Set keys from PSK (Pre-Shared Key) using PBKDF2
+    bool setKeyFromPSK(const std::string& psk, bool isAppKey = true);
 
-    // Build Meshtastic nonce: packet_id (4 bytes LE) + from_node (4 bytes LE) + 4 zero bytes
-    static std::array<uint8_t, 12> buildNonce(uint32_t packetId, uint32_t fromNode);
+    // Decrypt a Meshtastic packet payload
+    // Returns empty vector on failure
+    std::vector<uint8_t> decryptPacket(const std::vector<uint8_t>& encryptedPayload,
+                                       uint32_t packetId,
+                                       uint32_t fromNodeId);
 
-    // Get key type
-    KeyType getKeyType() const { return keyType; }
-    bool hasKey() const { return hasKey_; }
+    // Check if keys are set
+    bool hasAppKey() const { return hasAppKey_; }
+    bool hasNetworkKey() const { return hasNetworkKey_; }
+
+    // Get last error
+    std::string getLastError() const { return lastError; }
 
 private:
-    KeyType keyType = KeyType::AES128;
-    std::vector<uint8_t> key;
-    bool hasKey_ = false;
+    // AES-CTR decryption with 128-bit key
+    std::vector<uint8_t> aesCtrDecrypt(const std::vector<uint8_t>& ciphertext,
+                                       const std::array<uint8_t, 16>& key,
+                                       const std::array<uint8_t, 16>& nonce);
 
-    // AES-CTR decryption implementation
-    bool decryptCTR(const uint8_t* input, size_t len, uint8_t* output, const std::array<uint8_t, 12>& nonce);
+    // AES-CTR decryption with 256-bit key
+    std::vector<uint8_t> aesCtrDecrypt256(const std::vector<uint8_t>& ciphertext,
+                                          const std::array<uint8_t, 32>& key,
+                                          const std::array<uint8_t, 16>& nonce);
+
+    // Build nonce from packet_id (4B LE) + from_node (4B LE) + 4 zero bytes
+    std::array<uint8_t, 16> buildNonce(uint32_t packetId, uint32_t fromNodeId);
+
+    // PBKDF2-HMAC-SHA256 key derivation
+    // 1000 iterations, salt "Meshtastic"
+    bool deriveKeyFromPSK(const std::string& psk,
+                          std::array<uint8_t, 16>& key128,
+                          std::array<uint8_t, 32>& key256,
+                          bool isAppKey);
+
+    // AES-CTR implementation using CryptoPP
+    template<size_t KeySize>
+    std::vector<uint8_t> aesCtrDecryptImpl(const std::vector<uint8_t>& ciphertext,
+                                           const std::array<uint8_t, KeySize>& key,
+                                           const std::array<uint8_t, 16>& nonce);
+
+    // State
+    std::vector<uint8_t> appKey128;
+    std::vector<uint8_t> appKey256;
+    std::vector<uint8_t> networkKey;
+    bool hasAppKey_ = false;
+    bool hasNetworkKey_ = false;
+    std::string lastError;
+
+    static constexpr const char* PBKDF2_SALT = "Meshtastic";
+    static constexpr int PBKDF2_ITERATIONS = 1000;
 };
-
-} // namespace MeshtasticDecryptor

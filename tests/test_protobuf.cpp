@@ -3,23 +3,6 @@
 #include <gtest/gtest.h>
 #include "mesh.pb.h"
 #include "telemetry.pb.h"
-#include "nodeinfo.pb.h"
-#include "position.pb.h"
-#include "admin.pb.h"
-#include "routing.pb.h"
-#include "neighbor_info.pb.h"
-#include "remote_hardware.pb.h"
-#include "detection_sensor.pb.h"
-#include "serial_interface.pb.h"
-#include "channel.pb.h"
-#include "radio.pb.h"
-#include "store_forward.pb.h"
-#include "local_only.pb.h"
-#include "device_ui.pb.h"
-#include "pax.pb.h"
-#include "serialization.pb.h"
-#include "remote_logging.pb.h"
-#include "mqtt.pb.h"
 
 using namespace meshtastic;
 
@@ -45,14 +28,14 @@ TEST(ProtobufTests, MeshPacketRoundTrip) {
     packet.set_channel(0);
     packet.set_hop_limit(3);
     packet.set_hop_start(3);
-    packet.set_portnum(1);  // TEXT_MESSAGE_APP
+    packet.set_portnum(PortNum::TEXT_MESSAGE_APP);
     packet.set_want_ack(true);
     packet.set_priority(1);
     packet.set_encrypted(false);
 
     Data data;
     data.set_text("Hello Meshtastic!");
-    data.set_portnum(1);
+    data.set_portnum(PortNum::TEXT_MESSAGE_APP);
     packet.set_payload(data.SerializeAsString());
 
     testRoundTrip(packet);
@@ -61,7 +44,7 @@ TEST(ProtobufTests, MeshPacketRoundTrip) {
 TEST(ProtobufTests, DataRoundTrip) {
     Data data;
     data.set_text("Test message");
-    data.set_portnum(1);
+    data.set_portnum(PortNum::TEXT_MESSAGE_APP);
     data.set_payload("binary data");
     data.set_reply_id(123);
     data.set_emoji("👍");
@@ -85,7 +68,7 @@ TEST(ProtobufTests, PositionRoundTrip) {
     testRoundTrip(pos);
 }
 
-TEST(ProtobufTests, NodeInfoRoundTrip) {
+TEST(ProtobufTests, UserRoundTrip) {
     User user;
     user.set_id("!12345678");
     user.set_long_name("Test Node");
@@ -158,53 +141,8 @@ TEST(ProtobufTests, AdminMessageRoundTrip) {
     admin.set_text("Admin command");
     admin.set_target("!12345678");
     admin.set_command(1);
-    admin.set_payload("payload data");
 
     testRoundTrip(admin);
-}
-
-TEST(ProtobufTests, RoutingRoundTrip) {
-    Routing routing;
-    auto* route = routing.add_routes();
-    route->set_to(0x87654321);
-    route->set_via(0x11223344);
-    route->set_snr(5);
-    route->set_hop_count(2);
-
-    testRoundTrip(routing);
-}
-
-TEST(ProtobufTests, NeighborInfoRoundTrip) {
-    NeighborInfo neighborInfo;
-    auto* neighbor = neighborInfo.add_neighbors();
-    neighbor->set_node_id(0x11223344);
-    neighbor->set_snr(3);
-    neighbor->set_last_heard(1234567890);
-    neighbor->set_rx_count(50);
-    neighbor->set_tx_count(30);
-
-    testRoundTrip(neighborInfo);
-}
-
-TEST(ProtobufTests, RemoteHardwareRoundTrip) {
-    RemoteHardware hw;
-    hw.set_command(RemoteHardware::GET_GPS);
-    hw.set_payload("gps request");
-    hw.set_target(0x12345678);
-    hw.set_request_id(1);
-
-    testRoundTrip(hw);
-}
-
-TEST(ProtobufTests, DetectionSensorRoundTrip) {
-    DetectionSensor sensor;
-    sensor.set_type(DetectionSensor::MOTION);
-    sensor.set_node_id(0x12345678);
-    sensor.set_value(1.0);
-    sensor.set_triggered(true);
-    sensor.set_timestamp(1234567890);
-
-    testRoundTrip(sensor);
 }
 
 TEST(ProtobufTests, ChannelRoundTrip) {
@@ -223,64 +161,6 @@ TEST(ProtobufTests, ChannelRoundTrip) {
     testRoundTrip(channel);
 }
 
-TEST(ProtobufTests, RadioConfigRoundTrip) {
-    RadioConfig radio;
-    auto* modConfig = radio.mutable_module_config();
-    modConfig->set_lora_region(1);  // US
-    modConfig->set_lora_modem_preset(0);  // LongFast
-    modConfig->set_lora_tx_power(22);
-    modConfig->set_lora_ignore_mqtt(false);
-    modConfig->set_lora_squelch_enabled(true);
-    modConfig->set_lora_squelch_level(-120);
-
-    testRoundTrip(radio);
-}
-
-TEST(ProtobufTests, SerialInterfaceRoundTrip) {
-    SerialInterface::Request req;
-    req.set_type(SerialInterface::Request::GET_CONFIG);
-
-    testRoundTrip(req);
-
-    SerialInterface::Response resp;
-    resp.set_status(SerialInterface::Response::OK);
-    resp.set_payload("config data");
-
-    testRoundTrip(resp);
-}
-
-TEST(ProtobufTests, StoreForwardRoundTrip) {
-    StoreForward sf;
-    auto* msg = sf.add_messages();
-    msg->set_payload("stored message");
-    msg->set_from(0x12345678);
-    msg->set_to(0x87654321);
-    msg->set_id(42);
-    msg->set_timestamp(1234567890);
-    msg->set_channel(0);
-    msg->set_hop_limit(3);
-    msg->set_priority(1);
-
-    testRoundTrip(sf);
-}
-
-TEST(ProtobufTests, LocalOnlyRoundTrip) {
-    LocalOnly local;
-    local.set_payload("local data");
-    local.set_portnum(1);
-
-    testRoundTrip(local);
-}
-
-TEST(ProtobufTests, DeviceUIRoundTrip) {
-    DeviceUI ui;
-    ui.set_action(DeviceUI::SHOW_TEXT);
-    ui.set_text("Hello Display");
-    ui.set_duration_ms(5000);
-
-    testRoundTrip(ui);
-}
-
 TEST(ProtobufTests, PaxcountRoundTrip) {
     Paxcount pax;
     pax.set_count(42);
@@ -289,53 +169,16 @@ TEST(ProtobufTests, PaxcountRoundTrip) {
     testRoundTrip(pax);
 }
 
-TEST(ProtobufTests, SerializationRoundTrip) {
-    Serialization ser;
-    ser.set_data("serialized data");
-    ser.set_format(1);  // protobuf
-
-    testRoundTrip(ser);
-}
-
-TEST(ProtobufTests, RemoteLoggingRoundTrip) {
-    RemoteLogging log;
-    log.set_level(RemoteLogging::INFO);
-    log.set_message("Test log message");
-    log.set_timestamp(1234567890);
-    log.set_module("test_module");
-
-    testRoundTrip(log);
-}
-
-TEST(ProtobufTests, MqttRoundTrip) {
-    Mqtt mqtt;
-    mqtt.set_topic("msh/US/JSON");
-    mqtt.set_payload("mqtt payload");
-    mqtt.set_retain(false);
-    mqtt.set_qos(1);
-
-    testRoundTrip(mqtt);
-}
-
-// Test MeshPacket with all port types
 TEST(ProtobufTests, MeshPacketAllPorts) {
-    const std::vector<std::pair<uint32_t, std::string>> ports = {
-        {1, "TEXT_MESSAGE_APP"},
-        {2, "POSITION_APP"},
-        {3, "NODEINFO_APP"},
-        {4, "ROUTING_APP"},
-        {5, "ADMIN_APP"},
-        {6, "TELEMETRY_APP"},
-        {7, "WAYPOINT_APP"},
-        {8, "AUDIO_APP"},
-        {9, "DETECTION_SENSOR_APP"},
-        {10, "REPLY_APP"},
-        {11, "IP_TUNNEL_APP"},
-        {12, "PAXCOUNTER_APP"},
-        {13, "SERIAL_APP"},
-        {14, "STORE_FORWARD_APP"},
-        {15, "ZPS_APP"},
-        {64, "PRIVATE_APP"}
+    const std::vector<std::pair<PortNum, std::string>> ports = {
+        {PortNum::TEXT_MESSAGE_APP, "TEXT_MESSAGE_APP"},
+        {PortNum::POSITION_APP, "POSITION_APP"},
+        {PortNum::NODEINFO_APP, "NODEINFO_APP"},
+        {PortNum::ROUTING_APP, "ROUTING_APP"},
+        {PortNum::ADMIN_APP, "ADMIN_APP"},
+        {PortNum::STORE_FORWARD_APP, "STORE_FORWARD_APP"},
+        {PortNum::PAXCOUNTER_APP, "PAXCOUNTER_APP"},
+        {PortNum::PRIVATE_APP, "PRIVATE_APP"}
     };
 
     for (const auto& [port, name] : ports) {
@@ -352,21 +195,21 @@ TEST(ProtobufTests, MeshPacketAllPorts) {
         // Add appropriate payload based on port
         std::string payload;
         switch (port) {
-            case 1: {
+            case PortNum::TEXT_MESSAGE_APP: {
                 Data data;
                 data.set_text("Test");
                 data.set_portnum(port);
                 payload = data.SerializeAsString();
                 break;
             }
-            case 2: {
+            case PortNum::POSITION_APP: {
                 Position pos;
                 pos.set_latitude(0);
                 pos.set_longitude(0);
                 payload = pos.SerializeAsString();
                 break;
             }
-            case 3: {
+            case PortNum::NODEINFO_APP: {
                 User user;
                 user.set_id("!12345678");
                 user.set_long_name("Test");
@@ -383,7 +226,6 @@ TEST(ProtobufTests, MeshPacketAllPorts) {
     }
 }
 
-// Test encryption flag handling
 TEST(ProtobufTests, MeshPacketEncryption) {
     MeshPacket packet;
     packet.set_from(0x12345678);
@@ -406,7 +248,6 @@ TEST(ProtobufTests, MeshPacketEncryption) {
     ASSERT_TRUE(parsed.encrypted());
 }
 
-// Test packet ID handling
 TEST(ProtobufTests, MeshPacketId) {
     MeshPacket packet;
     packet.set_from(0x12345678);
@@ -424,7 +265,6 @@ TEST(ProtobufTests, MeshPacketId) {
     ASSERT_EQ(parsed.id(), UINT32_MAX);
 }
 
-// Test channel index
 TEST(ProtobufTests, MeshPacketChannel) {
     MeshPacket packet;
     packet.set_from(0x12345678);

@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package meshtastic;
+
+option cc_enable_arenas = true;
+
+message AdminMessage {
+    string text = 1;
+    string target = 2;
+    uint32 command = 3;
+    bytes payload = 4;
+}

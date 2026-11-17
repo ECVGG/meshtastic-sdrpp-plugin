@@ -2,7 +2,6 @@
 
 #include <complex>
 #include <vector>
-#include <memory>
 #include <cstdint>
 
 using Complex = std::complex<float>;
@@ -12,7 +11,7 @@ struct LoRaModemConfig {
     int bandwidth = 125000;         // Hz
     int codingRate = 5;             // 4/5, 4/6, 4/7, 4/8
     int preambleLength = 8;         // symbols
-    uint8_t syncWord = 0x12;        // 0x12 for LoRaWAN, 0x34 for Meshtastic
+    uint8_t syncWord = 0x34;        // 0x12 for LoRaWAN, 0x34 for Meshtastic
     bool crcEnabled = true;
     bool implicitHeader = false;
     bool iqInverted = false;
@@ -32,7 +31,7 @@ struct LoRaPacket {
 
 class LoRaDemodulator {
 public:
-    LoRaDemodulator();
+    LoRaDemodulator() : initialized(false) {}
     ~LoRaDemodulator();
 
     bool init(const LoRaModemConfig& config);
@@ -40,18 +39,23 @@ public:
     bool isInitialized() const { return initialized; }
 
     // Process IQ samples and return detected packets
-    std::vector<LoRaPacket> process(const Complex* iq, size_t count, double sampleRate);
+    std::vector<LoRaPacket> process(const std::complex<float>* iq, size_t count, double sampleRate);
 
     // Get configuration
     LoRaModemConfig getConfig() const { return config; }
 
+    void start() { running = true; }
+    void stop() { running = false; }
+    bool isRunning() const { return running; }
+
 private:
     LoRaModemConfig config;
     bool initialized = false;
+    bool running = false;
 
     // Built-in demodulator state (fallback when liquid-dsp not available)
     struct BuiltinState {
-        std::vector<Complex> buffer;
+        std::vector<std::complex<float>> buffer;
         size_t sampleCount = 0;
         double freqOffset = 0;
         int sf = 7;
@@ -62,17 +66,24 @@ private:
     std::unique_ptr<BuiltinState> builtinState;
 
     // Built-in LoRa demodulation (software fallback)
-    std::vector<LoRaPacket> processBuiltin(const Complex* iq, size_t count, double sampleRate);
+    std::vector<uint8_t> processBuiltin(const std::complex<float>* iq, size_t count, double sampleRate);
 
     // Preamble detection
-    bool detectPreamble(const Complex* iq, size_t count, size_t& preambleStart);
+    bool detectPreamble(const std::complex<float>* iq, size_t count, size_t& preambleStart);
 
     // Symbol demodulation
-    std::vector<uint8_t> demodulateSymbols(const Complex* iq, size_t count, int sf, int bw);
+    std::vector<uint8_t> demodulateSymbols(const std::complex<float>* iq, size_t count, int sf, int bw);
 
     // Deinterleaving and decoding
     std::vector<uint8_t> deinterleaveAndDecode(const std::vector<uint8_t>& symbols, int sf, int cr);
 
+    // Packet decoding
+    std::vector<uint8_t> decodePacket(const std::complex<float>* iq, size_t count);
+
     // CRC check
     bool checkCRC(const std::vector<uint8_t>& data);
+
+    // RSSI/SNR estimation
+    int estimateRSSI(const std::complex<float>* iq, size_t count);
+    float estimateSNR(const std::complex<float>* iq, size_t count);
 };

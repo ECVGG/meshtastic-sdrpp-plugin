@@ -1,12 +1,5 @@
 # Meshtastic Decoder Plugin Tests
-
-cmake_minimum_required(VERSION 3.16)
-
-# Find GTest
-find_package(GTest REQUIRED)
-
-# Include the main CMakeLists to get access to source files and dependencies
-# We'll compile the test sources directly with the plugin sources
+# GTest is found in the parent CMakeLists.txt
 
 # Test sources
 set(TEST_SOURCES
@@ -15,17 +8,25 @@ set(TEST_SOURCES
     test_protocol.cpp
 )
 
+# Include generated protobuf sources from parent
+# These are generated in the build root directory
+set(PROTO_SRCS
+    ${CMAKE_CURRENT_BINARY_DIR}/../mesh.pb.cc
+    ${CMAKE_CURRENT_BINARY_DIR}/../telemetry.pb.cc
+)
+
 # Create test executable - link sources directly, not the MODULE library
 add_executable(meshtastic_tests ${TEST_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/MeshtasticDecryptor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/MeshtasticProtocol.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/LoRaDemodulator.cpp
+    ${PROTO_SRCS}
 )
 
-# Link libraries
+# Link libraries - use modern GTest targets
 target_link_libraries(meshtastic_tests PRIVATE
-    GTest::GTest
-    GTest::Main
+    GTest::gtest
+    GTest::gtest_main
     ${Protobuf_LIBRARIES}
     ${CRYPTOPP_LIBRARIES}
     Threads::Threads
@@ -34,7 +35,7 @@ target_link_libraries(meshtastic_tests PRIVATE
 # Include directories
 target_include_directories(meshtastic_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
-    ${CMAKE_CURRENT_BINARY_DIR}/../include
+    ${CMAKE_CURRENT_BINARY_DIR}/..
     ${CMAKE_CURRENT_BINARY_DIR}
     ${Protobuf_INCLUDE_DIRS}
     ${CRYPTOPP_INCLUDE_DIRS}

@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package meshtastic;
+
+option cc_enable_arenas = true;
+
+message Routing {
+    message Route {
+        uint32 to = 1;
+        uint32 via = 2;
+        int32 snr = 3;
+        int32 hop_count = 4;
+    }
+
+    repeated Route routes = 1;
+}

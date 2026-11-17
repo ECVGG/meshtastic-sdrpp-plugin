@@ -1,141 +1,103 @@
-# Meshtastic SDR++ Plugin
+# Meshtastic Decoder Plugin for SDR++
 
-A plugin for [SDR++](https://github.com/AlexandreRouma/SDRPlusPlus) that decodes and decrypts [Meshtastic](https://meshtastic.org/) LoRa mesh network packets.
+A SDR++ decoder module for decoding and decrypting Meshtastic LoRa packets in real-time.
 
 ## Features
 
-- **LoRa Demodulation**: Decodes LoRa packets (SF7-SF12, BW 125/250/500 kHz)
-- **Protocol Parsing**: Full Meshtastic protobuf packet parsing
-- **Decryption**: AES-128-CTR / AES-256-CTR decryption with channel keys
-- **Real-time Display**: ImGui-based packet viewer with node database
-- **Channel Management**: Multiple channel support with PSK configuration
-- **Configuration Persistence**: Auto-saves settings to JSON
+- **Real-time LoRa demodulation** (SF7-SF12, BW 125kHz, CR 4/5)
+- **Meshtastic protocol parsing** - Mesh header + Protobuf payloads
+- **AES-CTR decryption** - AppKey (128/256-bit) and NetworkKey support
+- **PBKDF2-SHA256 key derivation** from PSK (1000 iterations, salt "Meshtastic")
+- **Full GUI integration** - Channel config, LoRa parameters, encryption keys, statistics, decoded messages
+- **Auto-save configuration** - Every 30 seconds + on shutdown
 
-## Supported Meshtastic Features
+## Installation (Portable)
 
-- Text messages
-- Position/GPS data
-- Node information (names, hardware, roles)
-- Telemetry (battery, voltage, environment sensors)
-- Routing information
-- Neighbor info
-- Admin messages
-- Fragment reassembly
-- Paxcounter data
+### Option 1: Pre-built DLL (Easiest)
+1. Download `meshtastic_decoder.dll` from the [Releases](https://github.com/yourusername/meshtastic-sdrpp-plugin/releases)
+2. Copy it to your SDR++ `modules` folder:
+   ```
+   SDR++/
+   └── modules/
+       └── meshtastic_decoder.dll
+   ```
+3. Copy `libprotobuf.dll` (from vcpkg) to the SDR++ root folder if not present
+4. Restart SDR++
+5. The plugin will appear as "Meshtastic Decoder" in the module list
 
-## Requirements
-
-- SDR++ (built from source or installed)
-- CMake 3.16+
-- C++17 compiler
-- Dependencies:
-  - protobuf (libprotobuf-dev / protobuf)
-  - Crypto++ (libcrypto++-dev / cryptopp)
-  - liquid-dsp (optional, for enhanced demodulation)
-  - nlohmann-json (nlohmann-json3-dev / nlohmann-json)
-
-## Building
-
-### Linux/macOS
-
-```bash
-# Set SDR++ root directory (build or install directory)
-export SDRPP_CORE_ROOT=/path/to/sdrpp/build
-
-# Run build script
-./build.sh --type Release --install
-```
-
-### Windows (PowerShell)
-
-```powershell
-# Set SDR++ root directory
-$env:SDRPP_CORE_ROOT="C:\path\to\sdrpp\build"
-
-# Run build script
-.\build.ps1 -BuildType Release -Install
-```
-
-### Manual CMake
-
-```bash
-mkdir build && cd build
-cmake -DCMAKE_BUILD_TYPE=Release -DSDRPP_CORE_ROOT=/path/to/sdrpp ..
-cmake --build . --config Release
-```
-
-## Installation
-
-The plugin installs to SDR++'s plugin directory:
-- Linux: `~/.local/lib/sdrpp/plugins/` or `/usr/local/lib/sdrpp/plugins/`
-- macOS: `/usr/local/lib/sdrpp/plugins/` or `~/Library/Application Support/SDR++/plugins/`
-- Windows: `%APPDATA%\SDR++\plugins\` or `<sdrpp_install>\lib\sdrpp\plugins\`
-
-After installation, restart SDR++ and enable the plugin in the Module Manager.
-
-## Usage
-
-1. Open SDR++
-2. Select a source module (RTL-SDR, HackRF, etc.)
-3. Tune to a Meshtastic frequency (e.g., 915 MHz US, 868 MHz EU, 433 MHz)
-4. Set sample rate to at least 1 MSPS (2 MSPS recommended)
-5. Open the Meshtastic module from the Modules menu
-6. Configure LoRa parameters (SF, BW, CR) to match the Meshtastic network
-7. Add channel PSKs for decryption
-8. View decoded packets in real-time
-
-## LoRa Modem Presets
-
-| Preset | SF | BW | CR | Use Case |
-|--------|-----|-----|-----|----------|
-| LongFast | 7 | 125 kHz | 4/5 | Default, ~8-10 km |
-| LongSlow | 11 | 125 kHz | 4/5 | Max range, ~15-20 km |
-| VeryLongSlow | 12 | 125 kHz | 4/5 | Extreme range, ~20+ km |
-| MediumFast | 7 | 250 kHz | 4/5 | Faster, ~5-7 km |
-| Fast | 7 | 500 kHz | 4/5 | High throughput, ~2-4 km |
+### Option 2: Build from Source
+See [BUILDING.md](BUILDING.md) for detailed build instructions.
 
 ## Configuration
 
-Settings are saved to `meshtastic_config.json` in SDR++'s config directory:
+The plugin creates two instances by default (defined in `config.json`):
+- **Mesh** - Disabled by default
+- **Meshtastic Decoder** - Enabled by default
 
-```json
-{
-  "lora": {
-    "spreading_factor": 7,
-    "bandwidth": 125000,
-    "coding_rate": 5,
-    "preamble_length": 8,
-    "sync_word": 18,
-    "crc_enabled": true,
-    "implicit_header": false,
-    "iq_inverted": false,
-    "center_frequency": 915000000.0,
-    "sample_rate": 2000000.0
-  },
-  "channels": [
-    {
-      "name": "Primary",
-      "psk": "base64_encoded_psk",
-      "enabled": true,
-      "index": 0,
-      "use_aes256": false
-    }
-  ]
-}
+### Settings (GUI Menu)
+Right-click the module → "Meshtastic Decoder" to access:
+
+| Section | Settings |
+|---------|----------|
+| **Channel Configuration** | Channel index (0-7), name, PSK, AES-256 toggle |
+| **LoRa Parameters** | SF (7-12), Bandwidth, Coding Rate (4/5-4/8), Preamble, Sync Word (0x34), CRC, Implicit Header, IQ Inverted, Center Frequency, Sample Rate |
+| **Encryption** | AES-256 toggle, App Key (hex), Network Key (hex) |
+| **Statistics** | Packets received/decoded/decrypted |
+| **Decoded Messages** | Timestamp, From/To Node IDs, Port, RSSI, SNR, Decoded content |
+
+### Encryption Keys
+- **PSK Method**: Enter a Pre-Shared Key → auto-derives AppKey/NetworkKey via PBKDF2
+- **Direct Keys**: Paste 32-byte AppKey (AES-256) or 16-byte NetworkKey (AES-128) as hex strings
+
+### Meshtastic Default Channel
+For default Meshtastic channels:
+- **PSK**: `1PG7OiApB1nwvP+rz05pAQLK` (Base64)
+- **Sync Word**: `0x34`
+- **SF**: 7, **BW**: 125kHz, **CR**: 4/5
+
+## Supported Message Types
+
+| Port | Name | Decoded Content |
+|------|------|-----------------|
+| 1 | TEXT_MESSAGE_APP | Text messages |
+| 3 | POSITION_APP | Latitude, Longitude, Altitude |
+| 4 | NODEINFO_APP | User long/short name |
+| 65 | TELEMETRY_APP | Battery level, voltage |
+| * | Others | Raw payload (bytes) |
+
+## Requirements
+
+- SDR++ v1.3+
+- Windows x64 (pre-built DLL)
+- For building: vcpkg with protobuf, cryptopp, fmt, spdlog, abseil, gtest
+
+## LoRa Parameters (Meshtastic Default)
+
+| Parameter | Value |
+|-----------|-------|
+| Spreading Factor | 7 |
+| Bandwidth | 125 kHz |
+| Coding Rate | 4/5 |
+| Sync Word | 0x34 |
+| Preamble | 8 symbols |
+| CRC | Enabled |
+| IQ Inverted | No |
+
+## Architecture
+
 ```
-
-## Meshtastic Channel Encryption
-
-Meshtastic uses AES-CTR encryption with:
-- **Key derivation**: PBKDF2-HMAC-SHA256(PSK, salt="meshtastic", iterations=100000)
-- **Key size**: 16 bytes (AES-128) or 32 bytes (AES-256)
-- **Nonce format**: 8 bytes packet_id (LE) + 8 bytes from_node (LE)
-
-To decrypt packets, add the channel's PSK (base64 encoded) in the plugin's channel settings.
+IQ Samples → VFO → LoRa Demodulator → Mesh Header Parser → AES-CTR Decryptor → Protobuf Parser → GUI
+                ↓
+         Preamble Detection
+         CSS Demodulation (SF7-SF12)
+         Deinterleaving (matrix transpose)
+         Hamming (7,4) Decoding (CR 4/5)
+         CRC16-CCITT Validation
+```
 
 ## License
 
-MIT License - See LICENSE file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## Contributing
 
@@ -147,8 +109,7 @@ MIT License - See LICENSE file for details.
 
 ## Acknowledgments
 
-- [SDR++](https://github.com/AlexandreRouma/SDRPlusPlus) - The SDR application
-- [Meshtastic](https://meshtastic.org/) - The LoRa mesh protocol
-- [liquid-dsp](https://github.com/jgaeddert/liquid-dsp) - DSP library
-- [Crypto++](https://www.cryptopp.com/) - Cryptography library
-- [protobuf](https://github.com/protocolbuffers/protobuf) - Protocol buffers# CI trigger
+- [Meshtastic](https://meshtastic.org/) - Open source mesh networking
+- [SDR++](https://github.com/AlexandreRouma/SDRPlusPlus) - SDR software
+- [protobuf](https://github.com/protocolbuffers/protobuf) - Serialization
+- [Crypto++](https://www.cryptopp.com/) - Cryptography

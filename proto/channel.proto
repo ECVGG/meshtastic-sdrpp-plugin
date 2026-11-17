@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package meshtastic;
+
+option cc_enable_arenas = true;
+
+message Channel {
+    int32 index = 1;
+    string name = 2;
+    string psk = 3;
+    bool enabled = 4;
+    bool uplink_enabled = 5;
+    bool downlink_enabled = 6;
+    int32 role = 7;
+    int32 flags = 8;
+    int32 slot = 9;
+    string module = 10;
+}
