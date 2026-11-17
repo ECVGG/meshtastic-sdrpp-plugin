@@ -18,7 +18,7 @@ cd vcpkg
 ./vcpkg integrate install
 
 # Install required packages
-./vcpkg install protobuf:x64-windows cryptopp:x64-windows fmt:x64-windows spdlog:x64-windows abseil:x64-windows gtest:x64-windows nlohmann-json:x64-windows
+./vcpkg install protobuf:x64-windows cryptopp:x64-windows fmt:x64-windows spdlog:x64-windows abseil:x64-windows
 ```
 
 ## Build Steps
@@ -32,7 +32,8 @@ cd sdrpp_src
 ### 2. Place Plugin in Decoder Modules
 ```bash
 # Copy this plugin to SDR++ decoder_modules
-cp -r /path/to/meshtastic-sdrpp-plugin sdrpp_src/decoder_modules/meshtastic_decoder
+# Replace <plugin-path> with the actual path to this repository
+cp -r <plugin-path> sdrpp_src/decoder_modules/meshtastic_decoder
 ```
 
 ### 3. Configure with CMake
@@ -42,7 +43,8 @@ mkdir build
 cd build
 
 # Configure with vcpkg toolchain
-cmake .. -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DSDRPP_MODULE_CMAKE=../cmake/sdrpp_module.cmake
+# Replace <vcpkg-root> with your vcpkg installation path (e.g., C:/vcpkg)
+cmake .. -DCMAKE_TOOLCHAIN_FILE=<vcpkg-root>/scripts/buildsystems/vcpkg.cmake -DSDRPP_MODULE_CMAKE=../cmake/sdrpp_module.cmake
 ```
 
 ### 4. Build
@@ -59,12 +61,12 @@ sdrpp_src/build/decoder_modules/meshtastic_decoder/Release/meshtastic_decoder.dl
 ### 6. Install to SDR++
 Copy the DLL to your SDR++ portable installation:
 ```bash
-copy meshtastic_decoder.dll C:\path\to\sdrpp_portable\modules\
+copy meshtastic_decoder.dll <sdrpp-root>\modules\
 ```
 
 Also copy `libprotobuf.dll` from vcpkg if not already present:
 ```bash
-copy C:\vcpkg\installed\x64-windows\bin\libprotobuf.dll C:\path\to\sdrpp_portable\
+copy <vcpkg-root>\installed\x64-windows\bin\libprotobuf.dll <sdrpp-root>\
 ```
 
 ## Alternative: Out-of-Tree Build
@@ -108,24 +110,4 @@ Use the **File Source** module in SDR++ with recorded IQ samples of Meshtastic p
 
 ## CI/CD
 
-GitHub Actions workflow example:
-```yaml
-name: Build
-on: [push, pull_request]
-jobs:
-  build:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v10
-      - name: Configure
-        run: cmake -B build -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
-      - name: Build
-        run: cmake --build build --target meshtastic_decoder --config Release
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: meshtastic_decoder.dll
-          path: build/decoder_modules/meshtastic_decoder/Release/meshtastic_decoder.dll
-```
+GitHub Actions workflow (`.github/workflows/ci.yml`) builds on every push and tag.

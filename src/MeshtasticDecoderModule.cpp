@@ -587,7 +587,7 @@ private:
     // LoRa Configuration
     struct LoRaConfig {
         int spreadingFactor = 7;
-        int bandwidth = 125000;
+        int bandwidth = 250000;
         int codingRate = 5;
         int preambleLength = 8;
         uint8_t syncWord = 0x34;

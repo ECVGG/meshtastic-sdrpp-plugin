@@ -14,6 +14,7 @@ A SDR++ decoder module for decoding and decrypting Meshtastic LoRa packets in re
 ## Installation (Portable)
 
 ### Option 1: Pre-built DLL (Easiest)
+
 1. Go to [Releases](https://github.com/ECVGG/meshtastic-sdrpp-plugin/releases)
 2. Download both files from Assets:
    - `meshtastic_decoder.dll` (the plugin)
@@ -31,6 +32,7 @@ A SDR++ decoder module for decoding and decrypting Meshtastic LoRa packets in re
 **Note**: Both DLLs are included in the release Assets. No vcpkg or compilation needed for portable use.
 
 ### Option 2: Build from Source
+
 See [BUILDING.md](BUILDING.md) for detailed build instructions.
 
 ## Configuration
@@ -40,6 +42,7 @@ The plugin creates two instances by default (defined in `config.json`):
 - **Meshtastic Decoder** - Enabled by default
 
 ### Settings (GUI Menu)
+
 Right-click the module → "Meshtastic Decoder" to access:
 
 | Section | Settings |
@@ -51,10 +54,12 @@ Right-click the module → "Meshtastic Decoder" to access:
 | **Decoded Messages** | Timestamp, From/To Node IDs, Port, RSSI, SNR, Decoded content |
 
 ### Encryption Keys
+
 - **PSK Method**: Enter a Pre-Shared Key → auto-derives AppKey/NetworkKey via PBKDF2
 - **Direct Keys**: Paste 32-byte AppKey (AES-256) or 16-byte NetworkKey (AES-128) as hex strings
 
 ### Meshtastic Default Channel (LongFast)
+
 For the default Meshtastic public channel:
 - **PSK**: `1PG7OiApB1nwvP+rz05pAQLK` (Base64) — *public default key, change for private channels*
 - **Sync Word**: `0x34`
@@ -76,7 +81,7 @@ For the default Meshtastic public channel:
 
 - SDR++ v1.3+
 - Windows x64 (pre-built DLL)
-- For building: vcpkg with protobuf, cryptopp, fmt, spdlog, abseil, gtest
+- For building: vcpkg with protobuf, cryptopp, fmt, spdlog, abseil
 
 ## LoRa Parameters (Meshtastic Default)
 
@@ -107,6 +112,7 @@ IQ Samples → VFO → LoRa Demodulator → Mesh Header Parser → AES-CTR Decry
 MIT License - see [LICENSE](LICENSE) for details.
 
 ### Dependency Licenses
+
 | Dependency | License | Compatible with MIT |
 |------------|---------|---------------------|
 | protobuf | BSD-3-Clause | Yes |
@@ -114,10 +120,9 @@ MIT License - see [LICENSE](LICENSE) for details.
 | fmt | MIT | Yes |
 | spdlog | MIT | Yes |
 | abseil | Apache-2.0 | Yes (with attribution) |
-| gtest | BSD-3-Clause | Yes |
-| nlohmann-json | MIT | Yes |
 | SDR++ API | GPL-3.0 | Plugin links dynamically |
 
+**Note**: This plugin dynamically links to SDR++ (GPL-3.0). The MIT license is compatible for your own code, but combined distribution may have GPL implications. Consult legal advice for commercial use.
 
 ## Contributing
 

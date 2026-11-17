@@ -92,6 +92,7 @@ jobs:
                 'find_package(fmt QUIET)'
                 'find_package(spdlog QUIET)'
                 'find_package(nlohmann_json QUIET)'
+                'find_package(abseil QUIET)'
               ) | ForEach-Object { $_ | Out-File -FilePath (Join-Path $cmakeDir "SDRPlusPlusConfig.cmake") -Encoding UTF8 -Append }
             }
           }
