@@ -127,7 +127,7 @@ jobs:
             Write-Warning "Could not find vcvarsall.bat, trying without VS environment setup"
           }
 
-          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DSDRPP_CORE_ROOT="${{ steps.sdrpp.outputs.SDRPP_ROOT }}" -DSDRPP_CMAKE_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DSDRPP_CORE_ROOT="${{ steps.sdrpp.outputs.SDRPP_ROOT }}" -DSDRPP_CMAKE_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}" -DSDRPP_MODULE_CMAKE="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}/sdrpp_module.cmake"
 
       - name: Build
         shell: pwsh
