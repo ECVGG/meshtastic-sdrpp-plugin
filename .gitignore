@@ -43,3 +43,5 @@ meshtastic_decoder_config.json
 
 # Release artifacts (keep only source in repo, release via GitHub Releases)
 release/*.dll
+sdrpp_portable/
+sdrpp_portable.zip

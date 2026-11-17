@@ -14,16 +14,21 @@ A SDR++ decoder module for decoding and decrypting Meshtastic LoRa packets in re
 ## Installation (Portable)
 
 ### Option 1: Pre-built DLL (Easiest)
-1. Download `meshtastic_decoder.dll` from the [Releases](https://github.com/yourusername/meshtastic-sdrpp-plugin/releases)
-2. Copy it to your SDR++ `modules` folder:
+1. Go to [Releases](https://github.com/ECVGG/meshtastic-sdrpp-plugin/releases)
+2. Download both files from Assets:
+   - `meshtastic_decoder.dll` (the plugin)
+   - `libprotobuf.dll` (required dependency)
+3. Copy both to your SDR++ folder:
    ```
    SDR++/
-   └── modules/
-       └── meshtastic_decoder.dll
+   ├── modules/
+   │   └── meshtastic_decoder.dll
+   └── libprotobuf.dll
    ```
-3. Copy `libprotobuf.dll` (from vcpkg) to the SDR++ root folder if not present
 4. Restart SDR++
 5. The plugin will appear as "Meshtastic Decoder" in the module list
+
+**Note**: Both DLLs are included in the release Assets. No vcpkg or compilation needed for portable use.
 
 ### Option 2: Build from Source
 See [BUILDING.md](BUILDING.md) for detailed build instructions.
@@ -49,11 +54,13 @@ Right-click the module → "Meshtastic Decoder" to access:
 - **PSK Method**: Enter a Pre-Shared Key → auto-derives AppKey/NetworkKey via PBKDF2
 - **Direct Keys**: Paste 32-byte AppKey (AES-256) or 16-byte NetworkKey (AES-128) as hex strings
 
-### Meshtastic Default Channel
-For default Meshtastic channels:
-- **PSK**: `1PG7OiApB1nwvP+rz05pAQLK` (Base64)
+### Meshtastic Default Channel (LongFast)
+For the default Meshtastic public channel:
+- **PSK**: `1PG7OiApB1nwvP+rz05pAQLK` (Base64) — *public default key, change for private channels*
 - **Sync Word**: `0x34`
 - **SF**: 7, **BW**: 250kHz, **CR**: 4/5
+
+**What is the PSK?** The Pre-Shared Key is a base64-encoded string used to derive encryption keys via PBKDF2-SHA256 (1000 iterations, salt "Meshtastic"). The default shown above is the public LongFast channel key — anyone on that channel can decrypt. For private channels, generate your own PSK in the Meshtastic app and enter it here.
 
 ## Supported Message Types
 
@@ -98,6 +105,20 @@ IQ Samples → VFO → LoRa Demodulator → Mesh Header Parser → AES-CTR Decry
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
+
+### Dependency Licenses
+| Dependency | License | Compatible with MIT |
+|------------|---------|---------------------|
+| protobuf | BSD-3-Clause | Yes |
+| Crypto++ | BSD-3-Clause | Yes |
+| fmt | MIT | Yes |
+| spdlog | MIT | Yes |
+| abseil | Apache-2.0 | Yes (with attribution) |
+| gtest | BSD-3-Clause | Yes |
+| nlohmann-json | MIT | Yes |
+| SDR++ API | GPL-3.0 | Plugin links dynamically |
+
+**Note**: This plugin dynamically links to SDR++ (GPL-3.0). The MIT license is compatible for your own code, but combined distribution may have GPL implications. Consult legal advice for commercial use.
 
 ## Contributing
 
