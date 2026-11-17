@@ -118,7 +118,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 | nlohmann-json | MIT | Yes |
 | SDR++ API | GPL-3.0 | Plugin links dynamically |
 
-**Note**: This plugin dynamically links to SDR++ (GPL-3.0). The MIT license is compatible for your own code, but combined distribution may have GPL implications. Consult legal advice for commercial use.
 
 ## Contributing
 
