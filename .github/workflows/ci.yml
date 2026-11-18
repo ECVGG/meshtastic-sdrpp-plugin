@@ -94,36 +94,43 @@ jobs:
           }
           Write-Host "SDR++ source fetched at C:/sdrpp-src"
 
-      - name: Find SDR++ include directory
+      - name: Find SDR++ include directories
         id: sdrpp-config
         shell: pwsh
         run: |
           $srcRoot = "C:/sdrpp-src"
 
-          # Find directory containing dsp/types.h, module.h, gui/menu.h
+          # Find all required headers
           Write-Host "Searching for SDR++ headers..."
+
           $typesHeader = Get-ChildItem $srcRoot -Recurse -Filter "types.h" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like "*dsp*" } | Select-Object -First 1
+          $moduleHeader = Get-ChildItem $srcRoot -Recurse -Filter "module.h" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $guiHeader = Get-ChildItem $srcRoot -Recurse -Filter "menu.h" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like "*gui*" } | Select-Object -First 1
 
-          if (-not $typesHeader) {
-            Write-Host "ERROR: dsp/types.h not found in source tree"
+          if (-not $typesHeader -or -not $moduleHeader -or -not $guiHeader) {
+            Write-Host "ERROR: Required headers not found"
+            if ($typesHeader) { Write-Host "  types.h: $($typesHeader.FullName)" } else { Write-Host "  types.h: NOT FOUND" }
+            if ($moduleHeader) { Write-Host "  module.h: $($moduleHeader.FullName)" } else { Write-Host "  module.h: NOT FOUND" }
+            if ($guiHeader) { Write-Host "  gui/menu.h: $($guiHeader.FullName)" } else { Write-Host "  gui/menu.h: NOT FOUND" }
             exit 1
           }
 
-          $includeDir = $typesHeader.Directory.Parent.FullName
           Write-Host "Found types.h at: $($typesHeader.FullName)"
-          Write-Host "Include directory: $includeDir"
+          Write-Host "Found module.h at: $($moduleHeader.FullName)"
+          Write-Host "Found gui/menu.h at: $($guiHeader.FullName)"
 
-          # Verify other required headers
-          if (-not (Test-Path (Join-Path $includeDir "module.h"))) {
-            Write-Host "ERROR: module.h not found in $includeDir"
-            exit 1
-          }
-          if (-not (Test-Path (Join-Path $includeDir "gui/menu.h"))) {
-            Write-Host "ERROR: gui/menu.h not found in $includeDir"
-            exit 1
-          }
+          # Get include directories (parent of each header's directory)
+          $includeDirs = @(
+            $typesHeader.Directory.Parent.FullName
+            $moduleHeader.Directory.Parent.FullName
+            $guiHeader.Directory.Parent.FullName
+          ) | Select-Object -Unique
 
-          $includeDirForward = $includeDir.Replace('\', '/')
+          Write-Host "Include directories:"
+          $includeDirs | ForEach-Object { Write-Host "  $_" }
+
+          # Convert to forward slashes for CMake
+          $includeDirsForward = $includeDirs | ForEach-Object { $_.Replace('\', '/') }
           $srcRootForward = $srcRoot.Replace('\', '/')
 
           $cmakeDir = "C:/sdrpp-cmake/SDRPlusPlus"
@@ -131,11 +138,13 @@ jobs:
             New-Item -ItemType Directory -Force -Path $cmakeDir | Out-Null
           }
 
+          # Create SDRPlusPlusConfig.cmake with multiple include directories
           $configFile = Join-Path $cmakeDir "SDRPlusPlusConfig.cmake"
+          $includeDirsCmake = ($includeDirsForward | ForEach-Object { '"' + $_ + '"' }) -join ';'
           @(
             '# Minimal SDRPlusPlus config for plugin building (using source headers)'
             'set(SDRPlusPlus_VERSION "nightly")'
-            'set(SDRPlusPlus_INCLUDE_DIRS "' + $includeDirForward + '")'
+            'set(SDRPlusPlus_INCLUDE_DIRS ' + $includeDirsCmake + ')'
             'set(SDRPlusPlus_LIBRARY_DIRS "")'
             'set(SDRPlusPlus_LIBRARIES "")'
             'set(SDRPlusPlus_PLUGIN_SUFFIX ".dll")'
