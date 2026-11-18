@@ -85,15 +85,9 @@ jobs:
                 'set(SDRPlusPlus_VERSION "nightly")'
                 'set(SDRPlusPlus_INCLUDE_DIRS "' + $rootForward + '/include")'
                 'set(SDRPlusPlus_LIBRARY_DIRS "' + $rootForward + '/lib")'
+                'set(SDRPlusPlus_LIBRARIES "")'
                 'set(SDRPlusPlus_PLUGIN_SUFFIX ".dll")'
                 'set(SDRPlusPlus_PLUGIN_INSTALL_DIR "' + $rootForward + '/plugins")'
-                'find_package(Protobuf REQUIRED)'
-                'find_package(Cryptopp REQUIRED)'
-                'find_package(Threads REQUIRED)'
-                'find_package(fmt QUIET)'
-                'find_package(spdlog QUIET)'
-                'find_package(nlohmann_json QUIET)'
-                'find_package(abseil QUIET)'
               ) | ForEach-Object { $_ | Out-File -FilePath (Join-Path $cmakeDir "SDRPlusPlusConfig.cmake") -Encoding UTF8 -Append }
             }
           }
