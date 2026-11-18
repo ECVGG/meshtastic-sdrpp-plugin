@@ -55,7 +55,8 @@ jobs:
         run: |
           cd C:/vcpkg
           # Install packages explicitly so they're available for CMake configure
-          ./vcpkg install protobuf cryptopp fmt spdlog absl nlohmann-json gtest --triplet x64-windows
+          # Package names must match vcpkg.json (use abseil, not absl)
+          ./vcpkg install protobuf cryptopp fmt spdlog abseil nlohmann-json gtest --triplet x64-windows
           Write-Host "=== Installed packages ==="
           ./vcpkg list --triplet x64-windows
           Write-Host "=== Checking Protobuf config ==="
@@ -69,10 +70,12 @@ jobs:
             }
           }
           Write-Host "=== Checking all package configs ==="
-          Get-ChildItem "C:/vcpkg/installed/x64-windows/share" -Directory | ForEach-Object {
-            $config = Join-Path $_.FullName "$($_.Name)Config.cmake"
-            if (Test-Path $config) {
-              Write-Host "  Found: $config"
+          if (Test-Path "C:/vcpkg/installed/x64-windows/share") {
+            Get-ChildItem "C:/vcpkg/installed/x64-windows/share" -Directory | ForEach-Object {
+              $config = Join-Path $_.FullName "$($_.Name)Config.cmake"
+              if (Test-Path $config) {
+                Write-Host "  Found: $config"
+              }
             }
           }
 
