@@ -50,33 +50,21 @@ jobs:
           $env:VCPKG_FEATURE_FLAGS = "binarycaching"
           echo "VCPKG_ROOT=C:/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Install dependencies
+      # Verify vcpkg cache has required packages (no explicit install - use cached binaries)
+      - name: Verify vcpkg cache
         shell: pwsh
         run: |
-          cd C:/vcpkg
-          # Install packages explicitly so they're available for CMake configure
-          # Package names must match vcpkg.json (use abseil, not absl)
-          ./vcpkg install protobuf cryptopp fmt spdlog abseil nlohmann-json gtest --triplet x64-windows
-          Write-Host "=== Installed packages ==="
-          ./vcpkg list --triplet x64-windows
-          Write-Host "=== Checking Protobuf config ==="
-          $protobufConfig = "C:/vcpkg/installed/x64-windows/share/protobuf/ProtobufConfig.cmake"
-          if (Test-Path $protobufConfig) {
-            Write-Host "ProtobufConfig.cmake found at $protobufConfig"
-          } else {
-            Write-Host "ProtobufConfig.cmake NOT found at $protobufConfig"
-            if (Test-Path "C:/vcpkg/installed/x64-windows/share") {
-              Get-ChildItem "C:/vcpkg/installed/x64-windows/share" | ForEach-Object { Write-Host "  $_" }
-            }
-          }
-          Write-Host "=== Checking all package configs ==="
-          if (Test-Path "C:/vcpkg/installed/x64-windows/share") {
+          Write-Host "=== Checking vcpkg cache ==="
+          if (Test-Path "C:/vcpkg/installed/x64-windows") {
+            Write-Host "vcpkg installed directory exists"
             Get-ChildItem "C:/vcpkg/installed/x64-windows/share" -Directory | ForEach-Object {
               $config = Join-Path $_.FullName "$($_.Name)Config.cmake"
               if (Test-Path $config) {
-                Write-Host "  Found: $config"
+                Write-Host "  Found config: $config"
               }
             }
+          } else {
+            Write-Host "WARNING: vcpkg cache not found - packages will be built from source"
           }
 
       - name: Download SDR++
