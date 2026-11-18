@@ -4,8 +4,8 @@ project(meshtastic_decoder LANGUAGES CXX)
 # Use static protobuf libraries
 set(Protobuf_USE_STATIC_LIBS ON)
 
-# Find required packages via vcpkg
-find_package(Protobuf REQUIRED)
+# Find required packages via vcpkg (use CONFIG mode for packages that provide config files)
+find_package(Protobuf CONFIG REQUIRED)
 find_package(Cryptopp REQUIRED)
 find_package(fmt REQUIRED)
 find_package(spdlog REQUIRED)
