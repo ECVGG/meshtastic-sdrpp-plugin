@@ -57,7 +57,8 @@ jobs:
         run: |
           cd C:/vcpkg
           # Install packages using manifest mode (reads vcpkg.json)
-          ./vcpkg install --triplet x64-windows --x-manifest-root="${{ github.workspace }}" --x-wait-for-lock --feature-flags=manifests,binarycaching --binarysource="clear;files,C:/vcpkg/binarycache,readwrite"
+          # Use binary caching for faster builds
+          ./vcpkg install --triplet x64-windows --x-manifest-root="${{ github.workspace }}" --feature-flags=manifests,binarycaching --binarysource="clear;files,C:/vcpkg/binarycache,readwrite"
           ./vcpkg list --triplet x64-windows
 
       - name: Download SDR++
