@@ -10,13 +10,14 @@ on:
 
 env:
   VCPKG_VERSION: "2024.06.14"
-  SDRPP_URL: "https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/sdrpp_windows_x64.zip"
+  SDRPP_REPO: "https://github.com/AlexandreRouma/SDRPlusPlus.git"
+  SDRPP_COMMIT: "master"
 
 jobs:
   build:
     name: Build Windows Release
     runs-on: windows-2022
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,6 +36,16 @@ jobs:
             vcpkg-${{ runner.os }}-${{ env.VCPKG_VERSION }}-
             vcpkg-${{ runner.os }}-
 
+      - name: Cache SDR++ build
+        id: sdrpp-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:/sdrpp-build
+          key: sdrpp-${{ runner.os }}-${{ env.SDRPP_COMMIT }}
+          restore-keys: |
+            sdrpp-${{ runner.os }}-
+
       - name: Setup vcpkg
         shell: pwsh
         run: |
@@ -52,129 +63,107 @@ jobs:
           echo "VCPKG_ROOT=C:/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "VCPKG_TOOLCHAIN_PATH=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Install dependencies (explicit packages for reliability)
+      - name: Install dependencies
         shell: pwsh
         run: |
           cd C:/vcpkg
-          # Install packages explicitly - matches vcpkg.json dependencies
-          # This is more reliable than manifest mode and shows clear progress
           $packages = @("protobuf", "cryptopp", "abseil", "fmt", "spdlog", "nlohmann-json", "gtest")
           ./vcpkg install $packages --triplet x64-windows
           Write-Host "=== Installed packages ==="
           ./vcpkg list --triplet x64-windows
-          Write-Host "=== Checking Protobuf config ==="
-          $protobufConfig = "C:/vcpkg/installed/x64-windows/share/protobuf/ProtobufConfig.cmake"
-          if (Test-Path $protobufConfig) {
-            Write-Host "ProtobufConfig.cmake found at $protobufConfig"
+
+          # Find ProtobufConfig.cmake location
+          Write-Host "=== Finding ProtobufConfig.cmake ==="
+          $protobufConfigs = Get-ChildItem "C:/vcpkg/installed/x64-windows" -Recurse -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue
+          if ($protobufConfigs) {
+            $protobufDir = $protobufConfigs[0].DirectoryName
+            Write-Host "Found ProtobufConfig.cmake at: $protobufDir"
+            echo "PROTOBUF_CONFIG_DIR=$protobufDir" | Out-File -FilePath $env:GITHUB_ENV -Append
           } else {
-            Write-Host "ProtobufConfig.cmake NOT found at $protobufConfig"
-            if (Test-Path "C:/vcpkg/installed/x64-windows/share") {
-              Get-ChildItem "C:/vcpkg/installed/x64-windows/share" | ForEach-Object { Write-Host "  $_" }
-            }
+            Write-Host "WARNING: ProtobufConfig.cmake not found!"
           }
 
-      - name: Download SDR++
-        id: sdrpp
+      - name: Build SDR++ from source
+        if: steps.sdrpp-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          $url = "${env:SDRPP_URL}"
-          $zip = "sdrpp.zip"
-          Write-Host "Downloading SDR++ from $url"
-          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
-          Write-Host "Extracting..."
-          Expand-Archive -Path $zip -DestinationPath sdrpp -Force
-
-          # Find the root directory (portable zip extracts to a single folder)
-          $dirs = Get-ChildItem sdrpp -Directory
-          if ($dirs.Count -eq 1) {
-            $root = $dirs[0].FullName
+          # Clone SDR++ (shallow)
+          if (-not (Test-Path "C:/sdrpp-src")) {
+            git clone --depth 1 --branch ${{ env.SDRPP_COMMIT }} ${{ env.SDRPP_REPO }} C:/sdrpp-src
           } else {
-            # If multiple directories, look for the one with sdrpp.exe
-            $exeDir = Get-ChildItem sdrpp -Recurse -Filter "sdrpp.exe" | Select-Object -First 1
-            if ($exeDir) { $root = $exeDir.DirectoryName } else { $root = $dirs[0].FullName }
+            cd C:/sdrpp-src
+            git fetch --depth 1 origin ${{ env.SDRPP_COMMIT }}
+            git checkout FETCH_HEAD
           }
-          Write-Host "SDR++ root: $root"
 
-          # Verify structure
-          Write-Host "Checking for include directory..."
-          if (Test-Path (Join-Path $root "include")) {
-            Write-Host "  Found include at $root/include"
+          # Configure and build SDR++ (only core, no plugins)
+          cmake -S C:/sdrpp-src -B C:/sdrpp-build `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DSDRPP_BUILD_PLUGINS=OFF `
+            -DSDRPP_BUILD_SDRPP=ON
+
+          cmake --build C:/sdrpp-build --config Release --parallel
+
+          # Verify SDRPlusPlusConfig.cmake was generated
+          $configPath = "C:/sdrpp-build/lib/cmake/SDRPlusPlus/SDRPlusPlusConfig.cmake"
+          if (Test-Path $configPath) {
+            Write-Host "SDRPlusPlusConfig.cmake found at $configPath"
           } else {
-            Write-Host "  include not found at root, searching..."
-            $inc = Get-ChildItem $root -Recurse -Directory -Filter "include" | Select-Object -First 1
-            if ($inc) {
-              $root = $inc.Parent.FullName
-              Write-Host "  Found include at $root/include"
+            # Search for it
+            $configs = Get-ChildItem "C:/sdrpp-build" -Recurse -Filter "SDRPlusPlusConfig.cmake" -ErrorAction SilentlyContinue
+            if ($configs) {
+              Write-Host "Found at: $($configs[0].FullName)"
             } else {
-              Write-Host "  WARNING: include directory not found!"
+              Write-Host "ERROR: SDRPlusPlusConfig.cmake not generated!"
+              exit 1
             }
           }
 
-          Write-Host "Checking for lib directory..."
-          if (Test-Path (Join-Path $root "lib")) {
-            Write-Host "  Found lib at $root/lib"
-          } else {
-            Write-Host "  WARNING: lib directory not found!"
+      - name: Set SDR++ paths
+        id: sdrpp-paths
+        shell: pwsh
+        run: |
+          # Find SDRPlusPlusConfig.cmake
+          $configs = Get-ChildItem "C:/sdrpp-build" -Recurse -Filter "SDRPlusPlusConfig.cmake" -ErrorAction SilentlyContinue
+          if (-not $configs) {
+            Write-Host "ERROR: SDRPlusPlusConfig.cmake not found in build directory!"
+            exit 1
           }
+          $cmakeDir = $configs[0].DirectoryName
+          $root = $cmakeDir.Parent.Parent.Parent.Parent  # Go up to build root
 
-          # Create cmake config directory
-          $cmakeDir = Join-Path $root "lib/cmake/SDRPlusPlus"
-          if (-not (Test-Path $cmakeDir)) {
-            New-Item -ItemType Directory -Force -Path $cmakeDir | Out-Null
-          }
-          Write-Host "CMake config dir: $cmakeDir"
+          Write-Host "SDR++ build root: $root"
+          Write-Host "SDR++ CMake config dir: $cmakeDir"
 
-          # Use forward slashes to avoid CMake escape sequence issues
-          $rootForward = $root.Replace('\', '/')
-
-          # Create SDRPlusPlusConfig.cmake
-          $configFile = Join-Path $cmakeDir "SDRPlusPlusConfig.cmake"
-          @(
-            '# Minimal SDRPlusPlus config for plugin building'
-            'set(SDRPlusPlus_VERSION "nightly")'
-            'set(SDRPlusPlus_INCLUDE_DIRS "' + $rootForward + '/include")'
-            'set(SDRPlusPlus_LIBRARY_DIRS "' + $rootForward + '/lib")'
-            'set(SDRPlusPlus_LIBRARIES "")'
-            'set(SDRPlusPlus_PLUGIN_SUFFIX ".dll")'
-            'set(SDRPlusPlus_PLUGIN_INSTALL_DIR "' + $rootForward + '/plugins")'
-          ) | ForEach-Object { $_ | Out-File -FilePath $configFile -Encoding UTF8 }
-
-          # Verify config file was created
-          if (Test-Path $configFile) {
-            Write-Host "Created SDRPlusPlusConfig.cmake at $configFile"
-            Get-Content $configFile | ForEach-Object { Write-Host "  $_" }
-          } else {
-            Write-Host "ERROR: Failed to create config file!"
-          }
-
-          # Create sdrpp_module.cmake (required for plugin building)
+          # Verify sdrpp_module.cmake exists
           $moduleFile = Join-Path $cmakeDir "sdrpp_module.cmake"
-          @(
-            '# sdrpp_module.cmake - SDR++ module/plugin build system'
-            'cmake_minimum_required(VERSION 3.13)'
-            ''
-            'function(sdrpp_add_module MODULE_NAME)'
-            '  add_library(${MODULE_NAME} MODULE ${ARGN})'
-            '  set_target_properties(${MODULE_NAME} PROPERTIES'
-            '    PREFIX ""'
-            '    SUFFIX "${SDRPlusPlus_PLUGIN_SUFFIX}"'
-            '  )'
-            '  target_include_directories(${MODULE_NAME} PRIVATE ${SDRPlusPlus_INCLUDE_DIRS})'
-            '  target_link_libraries(${MODULE_NAME} PRIVATE ${SDRPlusPlus_LIBRARIES})'
-            '  if (SDRPlusPlus_PLUGIN_INSTALL_DIR)'
-            '    install(TARGETS ${MODULE_NAME} DESTINATION ${SDRPlusPlus_PLUGIN_INSTALL_DIR})'
-            '  endif()'
-            'endfunction()'
-            ''
-            'function(sdrpp_get_module_cmake_dir OUT_VAR)'
-            '  set(${OUT_VAR} ${CMAKE_CURRENT_LIST_DIR} PARENT_SCOPE)'
-            'endfunction()'
-          ) | ForEach-Object { $_ | Out-File -FilePath $moduleFile -Encoding UTF8 }
-
-          if (Test-Path $moduleFile) {
-            Write-Host "Created sdrpp_module.cmake at $moduleFile"
-          } else {
-            Write-Host "ERROR: Failed to create module file!"
+          if (-not (Test-Path $moduleFile)) {
+            Write-Host "Creating sdrpp_module.cmake at $moduleFile"
+            @(
+              '# sdrpp_module.cmake - SDR++ module/plugin build system'
+              'cmake_minimum_required(VERSION 3.13)'
+              ''
+              'function(sdrpp_add_module MODULE_NAME)'
+              '  add_library(${MODULE_NAME} MODULE ${ARGN})'
+              '  set_target_properties(${MODULE_NAME} PROPERTIES'
+              '    PREFIX ""'
+              '    SUFFIX "${SDRPlusPlus_PLUGIN_SUFFIX}"'
+              '  )'
+              '  target_include_directories(${MODULE_NAME} PRIVATE ${SDRPlusPlus_INCLUDE_DIRS})'
+              '  target_link_libraries(${MODULE_NAME} PRIVATE ${SDRPlusPlus_LIBRARIES})'
+              '  if (SDRPlusPlus_PLUGIN_INSTALL_DIR)'
+              '    install(TARGETS ${MODULE_NAME} DESTINATION ${SDRPlusPlus_PLUGIN_INSTALL_DIR})'
+              '  endif()'
+              'endfunction()'
+              ''
+              'function(sdrpp_get_module_cmake_dir OUT_VAR)'
+              '  set(${OUT_VAR} ${CMAKE_CURRENT_LIST_DIR} PARENT_SCOPE)'
+              'endfunction()'
+            ) | ForEach-Object { $_ | Out-File -FilePath $moduleFile -Encoding UTF8 }
           }
 
           echo "SDRPP_ROOT=$root" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -186,7 +175,9 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          # Use vcpkg toolchain file - this automatically sets up all include/library paths
+          # Get protobuf config dir from env
+          $protobufDir = $env:PROTOBUF_CONFIG_DIR
+
           $cmakeArgs = @(
             '-S', '.'
             '-B', 'build'
@@ -195,17 +186,20 @@ jobs:
             '-DCMAKE_BUILD_TYPE=Release'
             '-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
             '-DVCPKG_TARGET_TRIPLET=x64-windows'
-            '-DSDRPP_CORE_ROOT="${{ steps.sdrpp.outputs.SDRPP_ROOT }}"'
-            '-DSDRPP_CMAKE_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"'
-            '-DSDRPP_MODULE_CMAKE="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}/sdrpp_module.cmake"'
-            '-DSDRPlusPlus_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"'
+            '-DSDRPP_CORE_ROOT="${{ steps.sdrpp-paths.outputs.SDRPP_ROOT }}"'
+            '-DSDRPP_CMAKE_DIR="${{ steps.sdrpp-paths.outputs.SDRPP_CMAKE_DIR }}"'
+            '-DSDRPP_MODULE_CMAKE="${{ steps.sdrpp-paths.outputs.SDRPP_CMAKE_DIR }}/sdrpp_module.cmake"'
+            '-DSDRPlusPlus_DIR="${{ steps.sdrpp-paths.outputs.SDRPP_CMAKE_DIR }}"'
           )
+
+          # Add protobuf config dir if found
+          if ($protobufDir) {
+            $cmakeArgs += "-DCMAKE_PREFIX_PATH=$protobufDir"
+          }
 
           Write-Host "Running cmake with arguments:"
           Write-Host ($cmakeArgs -join ' ')
 
-          # GitHub Actions windows-2022 runner has VS build tools in PATH
-          # Use PowerShell argument splatting to handle spaces in generator name correctly
           $exitCode = & cmake @cmakeArgs
           if ($exitCode -ne 0) {
             throw "cmake configure failed with exit code $exitCode"
