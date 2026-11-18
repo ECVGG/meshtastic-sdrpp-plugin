@@ -71,7 +71,6 @@ jobs:
           Write-Host "=== Installed packages ==="
           ./vcpkg list --triplet x64-windows
 
-          # Find ProtobufConfig.cmake location
           Write-Host "=== Finding ProtobufConfig.cmake ==="
           $protobufConfigs = Get-ChildItem "C:/vcpkg/installed/x64-windows" -Recurse -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue
           if ($protobufConfigs) {
@@ -82,11 +81,10 @@ jobs:
             Write-Host "WARNING: ProtobufConfig.cmake not found!"
           }
 
-      - name: Fetch SDR++ source (for headers and CMake config template)
+      - name: Fetch SDR++ source
         if: steps.sdrpp-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          # Clone SDR++ (shallow, just for headers)
           if (-not (Test-Path "C:/sdrpp-src")) {
             git clone --depth 1 --branch ${{ env.SDRPP_COMMIT }} ${{ env.SDRPP_REPO }} C:/sdrpp-src
           } else {
@@ -101,8 +99,6 @@ jobs:
         shell: pwsh
         run: |
           $srcRoot = "C:/sdrpp-src"
-
-          # Check known SDR++ include directory locations
           $candidates = @(
             Join-Path $srcRoot "include"
             Join-Path $srcRoot "src"
@@ -112,9 +108,10 @@ jobs:
 
           $foundInclude = $null
           foreach ($path in $candidates) {
-            if (Test-Path (Join-Path $path "dsp/types.h") -and
-                Test-Path (Join-Path $path "module.h") -and
-                Test-Path (Join-Path $path "gui/menu.h")) {
+            $hasDsp = Test-Path (Join-Path $path "dsp/types.h")
+            $hasModule = Test-Path (Join-Path $path "module.h")
+            $hasGui = Test-Path (Join-Path $path "gui/menu.h")
+            if ($hasDsp -and $hasModule -and $hasGui) {
               $foundInclude = $path
               Write-Host "Found SDR++ include directory at: $foundInclude"
               break
@@ -130,17 +127,14 @@ jobs:
             exit 1
           }
 
-          # Use forward slashes for CMake
           $includeDirForward = $foundInclude.Replace('\', '/')
           $srcRootForward = $srcRoot.Replace('\', '/')
 
-          # Create CMake config directory
           $cmakeDir = "C:/sdrpp-cmake/SDRPlusPlus"
           if (-not (Test-Path $cmakeDir)) {
             New-Item -ItemType Directory -Force -Path $cmakeDir | Out-Null
           }
 
-          # Create SDRPlusPlusConfig.cmake pointing to source headers
           $configFile = Join-Path $cmakeDir "SDRPlusPlusConfig.cmake"
           @(
             '# Minimal SDRPlusPlus config for plugin building (using source headers)'
@@ -155,7 +149,6 @@ jobs:
           Write-Host "Created SDRPlusPlusConfig.cmake at $configFile"
           Get-Content $configFile | ForEach-Object { Write-Host "  $_" }
 
-          # Create sdrpp_module.cmake
           $moduleFile = Join-Path $cmakeDir "sdrpp_module.cmake"
           @(
             '# sdrpp_module.cmake - SDR++ module/plugin build system'
