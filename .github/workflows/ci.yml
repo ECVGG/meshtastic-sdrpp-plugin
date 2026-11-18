@@ -46,9 +46,11 @@ jobs:
             git checkout ${{ env.VCPKG_VERSION }} 2>$null || $true
             ./bootstrap-vcpkg.bat -disableMetrics 2>$null || $true
           }
-          $env:VCPKG_BINARY_SOURCES = "clear;files,C:/vcpkg/downloads,readwrite"
+          # Use remote binary cache (x-gha) + local downloads for fastest installs
+          $env:VCPKG_BINARY_SOURCES = "clear;x-gha,readwrite;files,C:/vcpkg/downloads,readwrite"
           $env:VCPKG_FEATURE_FLAGS = "binarycaching,manifests"
           echo "VCPKG_ROOT=C:/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "VCPKG_TOOLCHAIN_PATH=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Install dependencies (vcpkg manifest mode)
         shell: pwsh
@@ -183,15 +185,15 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          # Use CMAKE_PREFIX_PATH to find vcpkg installed packages directly
-          # Packages were already installed in "Install dependencies" step to C:/vcpkg/installed/x64-windows
+          # Use vcpkg toolchain file - this automatically sets up all include/library paths
           $cmakeArgs = @(
             '-S', '.'
             '-B', 'build'
             '-G', 'Visual Studio 17 2022'
             '-A', 'x64'
             '-DCMAKE_BUILD_TYPE=Release'
-            '-DCMAKE_PREFIX_PATH=C:/vcpkg/installed/x64-windows'
+            '-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
+            '-DVCPKG_TARGET_TRIPLET=x64-windows'
             '-DSDRPP_CORE_ROOT="${{ steps.sdrpp.outputs.SDRPP_ROOT }}"'
             '-DSDRPP_CMAKE_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"'
             '-DSDRPP_MODULE_CMAKE="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}/sdrpp_module.cmake"'
