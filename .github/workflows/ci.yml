@@ -10,14 +10,13 @@ on:
 
 env:
   VCPKG_VERSION: "2024.06.14"
-  SDRPP_REPO: "https://github.com/AlexandreRouma/SDRPlusPlus.git"
-  SDRPP_COMMIT: "master"
+  SDRPP_PORTABLE_URL: "https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/SDRPlusPlus-win64.zip"
 
 jobs:
   build:
     name: Build Windows Release
     runs-on: windows-2022
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,16 +34,6 @@ jobs:
           restore-keys: |
             vcpkg-${{ runner.os }}-${{ env.VCPKG_VERSION }}-
             vcpkg-${{ runner.os }}-
-
-      - name: Cache SDR++ source
-        id: sdrpp-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            C:/sdrpp-src
-          key: sdrpp-src-${{ runner.os }}-${{ env.SDRPP_COMMIT }}
-          restore-keys: |
-            sdrpp-src-${{ runner.os }}-
 
       - name: Setup vcpkg
         shell: pwsh
@@ -81,54 +70,40 @@ jobs:
             Write-Host "WARNING: ProtobufConfig.cmake not found!"
           }
 
-      - name: Fetch SDR++ source
-        if: steps.sdrpp-cache.outputs.cache-hit != 'true'
+      - name: Download SDR++ portable (for headers and CMake config)
         shell: pwsh
         run: |
-          if (-not (Test-Path "C:/sdrpp-src")) {
-            git clone --depth 1 --branch ${{ env.SDRPP_COMMIT }} ${{ env.SDRPP_REPO }} C:/sdrpp-src
+          Write-Host "Downloading SDR++ portable..."
+          Invoke-WebRequest -Uri "${{ env.SDRPP_PORTABLE_URL }}" -OutFile "C:/sdrpp-portable.zip"
+          Write-Host "Extracting SDR++ portable..."
+          Expand-Archive -Path "C:/sdrpp-portable.zip" -DestinationPath "C:/sdrpp-portable" -Force
+
+          # Find the extracted directory (it might be named SDRPlusPlus-* or similar)
+          $extractedDirs = Get-ChildItem "C:/sdrpp-portable" -Directory
+          if ($extractedDirs.Count -eq 1) {
+            $sdrppRoot = $extractedDirs[0].FullName
           } else {
-            cd C:/sdrpp-src
-            git fetch --depth 1 origin ${{ env.SDRPP_COMMIT }}
-            git checkout FETCH_HEAD
-          }
-          Write-Host "SDR++ source fetched at C:/sdrpp-src"
-
-      - name: Create SDR++ CMake config from source
-        id: sdrpp-config
-        shell: pwsh
-        run: |
-          $srcRoot = "C:/sdrpp-src"
-          $candidates = @(
-            Join-Path $srcRoot "include"
-            Join-Path $srcRoot "src"
-            Join-Path $srcRoot "src/SDRPlusPlus"
-            $srcRoot
-          )
-
-          $foundInclude = $null
-          foreach ($path in $candidates) {
-            $hasDsp = Test-Path (Join-Path $path "dsp/types.h")
-            $hasModule = Test-Path (Join-Path $path "module.h")
-            $hasGui = Test-Path (Join-Path $path "gui/menu.h")
-            if ($hasDsp -and $hasModule -and $hasGui) {
-              $foundInclude = $path
-              Write-Host "Found SDR++ include directory at: $foundInclude"
-              break
-            }
+            $sdrppRoot = "C:/sdrpp-portable"
           }
 
-          if (-not $foundInclude) {
-            Write-Host "ERROR: Could not find SDR++ include directory with required headers!"
-            Write-Host "Checked paths:"
-            $candidates | ForEach-Object { Write-Host "  $_" }
-            Write-Host "Listing directories in source root:"
-            Get-ChildItem $srcRoot -Directory | ForEach-Object { Write-Host "  $_" }
+          # Verify headers exist
+          $includeDir = Join-Path $sdrppRoot "include"
+          if (-not (Test-Path (Join-Path $includeDir "dsp/types.h"))) {
+            Write-Host "ERROR: dsp/types.h not found in $includeDir"
+            Get-ChildItem $includeDir -Recurse -Filter "*.h" | Select-Object -First 20 | ForEach-Object { Write-Host "  $($_.FullName)" }
             exit 1
           }
 
-          $includeDirForward = $foundInclude.Replace('\', '/')
-          $srcRootForward = $srcRoot.Replace('\', '/')
+          Write-Host "SDR++ portable headers found at: $includeDir"
+          echo "SDRPP_INCLUDE_DIR=$($includeDir.Replace('\', '/'))" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "SDRPP_ROOT=$($sdrppRoot.Replace('\', '/'))" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Create SDR++ CMake config from portable
+        id: sdrpp-config
+        shell: pwsh
+        run: |
+          $includeDir = $env:SDRPP_INCLUDE_DIR
+          $sdrppRoot = $env:SDRPP_ROOT
 
           $cmakeDir = "C:/sdrpp-cmake/SDRPlusPlus"
           if (-not (Test-Path $cmakeDir)) {
@@ -137,13 +112,13 @@ jobs:
 
           $configFile = Join-Path $cmakeDir "SDRPlusPlusConfig.cmake"
           @(
-            '# Minimal SDRPlusPlus config for plugin building (using source headers)'
+            '# Minimal SDRPlusPlus config for plugin building (using portable headers)'
             'set(SDRPlusPlus_VERSION "nightly")'
-            'set(SDRPlusPlus_INCLUDE_DIRS "' + $includeDirForward + '")'
+            'set(SDRPlusPlus_INCLUDE_DIRS "' + $includeDir + '")'
             'set(SDRPlusPlus_LIBRARY_DIRS "")'
             'set(SDRPlusPlus_LIBRARIES "")'
             'set(SDRPlusPlus_PLUGIN_SUFFIX ".dll")'
-            'set(SDRPlusPlus_PLUGIN_INSTALL_DIR "' + $srcRootForward + '/plugins")'
+            'set(SDRPlusPlus_PLUGIN_INSTALL_DIR "' + $sdrppRoot + '/plugins")'
           ) | ForEach-Object { $_ | Out-File -FilePath $configFile -Encoding UTF8 }
 
           Write-Host "Created SDRPlusPlusConfig.cmake at $configFile"
@@ -174,7 +149,6 @@ jobs:
 
           Write-Host "Created sdrpp_module.cmake at $moduleFile"
 
-          echo "SDRPP_ROOT=$srcRoot" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           echo "SDRPP_CMAKE_DIR=$cmakeDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Configure
@@ -193,7 +167,6 @@ jobs:
             '-DCMAKE_BUILD_TYPE=Release'
             '-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
             '-DVCPKG_TARGET_TRIPLET=x64-windows'
-            '-DSDRPP_CORE_ROOT="${{ steps.sdrpp-config.outputs.SDRPP_ROOT }}"'
             '-DSDRPP_CMAKE_DIR="${{ steps.sdrpp-config.outputs.SDRPP_CMAKE_DIR }}"'
             '-DSDRPP_MODULE_CMAKE="${{ steps.sdrpp-config.outputs.SDRPP_CMAKE_DIR }}/sdrpp_module.cmake"'
             '-DSDRPlusPlus_DIR="${{ steps.sdrpp-config.outputs.SDRPP_CMAKE_DIR }}"'
