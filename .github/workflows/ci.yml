@@ -120,12 +120,13 @@ jobs:
           echo "SDRPP_CMAKE_DIR=$cmakeDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Configure
-        timeout-minutes: 15
+        timeout-minutes: 30
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
-          # Use vcpkg toolchain file - packages installed globally in vcpkg directory
+          # Use vcpkg toolchain file - disable manifest mode to prevent re-installing packages
+          # Packages were already installed in "Install dependencies" step
           $cmakeArgs = @(
             '-S', '.'
             '-B', 'build'
@@ -133,6 +134,10 @@ jobs:
             '-A', 'x64'
             '-DCMAKE_BUILD_TYPE=Release'
             '-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
+            '-DVCPKG_MANIFEST_MODE=OFF'
+            '-DVCPKG_INSTALLATION_ROOT=C:/vcpkg'
+            '-DVCPKG_TARGET_TRIPLET=x64-windows'
+            '-DCMAKE_PREFIX_PATH=C:/vcpkg/installed/x64-windows'
             '-DSDRPP_CORE_ROOT="${{ steps.sdrpp.outputs.SDRPP_ROOT }}"'
             '-DSDRPP_CMAKE_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"'
             '-DSDRPP_MODULE_CMAKE="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}/sdrpp_module.cmake"'
