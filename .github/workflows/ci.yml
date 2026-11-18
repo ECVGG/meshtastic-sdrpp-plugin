@@ -137,7 +137,7 @@ jobs:
           $cmakeArgs = @(
             '-S', '.'
             '-B', 'build'
-            '-G', '`"Visual Studio 17 2022`"'
+            '-G', 'Visual Studio 17 2022'
             '-A', 'x64'
             '-DCMAKE_BUILD_TYPE=Release'
             '-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
@@ -154,8 +154,8 @@ jobs:
           Write-Host ($cmakeArgs -join ' ')
 
           # GitHub Actions windows-2022 runner has VS build tools in PATH
-          # Run cmake directly without vcvarsall
-          $exitCode = (Start-Process cmake -ArgumentList $cmakeArgs -Wait -PassThru -NoNewWindow).ExitCode
+          # Use PowerShell argument splatting to handle spaces in generator name correctly
+          $exitCode = & cmake @cmakeArgs
           if ($exitCode -ne 0) {
             throw "cmake configure failed with exit code $exitCode"
           }
