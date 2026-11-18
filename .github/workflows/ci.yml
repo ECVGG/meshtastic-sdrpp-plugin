@@ -52,13 +52,14 @@ jobs:
           echo "VCPKG_ROOT=C:/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "VCPKG_TOOLCHAIN_PATH=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Install dependencies (vcpkg manifest mode)
+      - name: Install dependencies (explicit packages for reliability)
         shell: pwsh
         run: |
           cd C:/vcpkg
-          # Use manifest mode to install all dependencies from vcpkg.json
-          # This is faster and more reliable with binary caching
-          ./vcpkg install --manifest-root ${{ github.workspace }} --triplet x64-windows
+          # Install packages explicitly - matches vcpkg.json dependencies
+          # This is more reliable than manifest mode and shows clear progress
+          $packages = @("protobuf", "cryptopp", "abseil", "fmt", "spdlog", "nlohmann-json", "gtest")
+          ./vcpkg install $packages --triplet x64-windows
           Write-Host "=== Installed packages ==="
           ./vcpkg list --triplet x64-windows
           Write-Host "=== Checking Protobuf config ==="
