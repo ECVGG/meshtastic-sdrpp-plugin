@@ -22,7 +22,7 @@ jobs:
           submodules: recursive
 
       - name: Setup vcpkg
-        uses: microsoft/vcpkg@v3
+        uses: microsoft/vcpkg@latest
         with:
           vcpkgVersion: '2024.06.14'
           triplet: 'x64-windows'
