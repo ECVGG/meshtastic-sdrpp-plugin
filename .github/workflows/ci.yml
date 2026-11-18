@@ -177,10 +177,11 @@ jobs:
 
           if ($vcvarsPath -and (Test-Path $vcvarsPath)) {
             Write-Host "Setting up Visual Studio environment from: $vcvarsPath"
-            # Use cmd to run vcvarsall then cmake - ensure proper backslash paths and quoting
+            # Use cmd to run vcvarsall then cmake - proper quoting for cmd /c
             $vcvarsPathFixed = $vcvarsPath.Replace('/', '\')
             $cmakeArgsStr = $cmakeArgs -join ' '
-            $cmdCommand = "/c `"`"$vcvarsPathFixed`"`" x64 && cmake $cmakeArgsStr"
+            # cmd /c takes a single quoted command string: "vcvarsall.bat x64 && cmake ..."
+            $cmdCommand = "/c `"$vcvarsPathFixed`" x64 && cmake $cmakeArgsStr"
             Write-Host "Running: cmd $cmdCommand"
             $exitCode = (Start-Process cmd -ArgumentList $cmdCommand -Wait -PassThru -NoNewWindow).ExitCode
             if ($exitCode -ne 0) {
