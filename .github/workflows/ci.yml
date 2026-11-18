@@ -50,13 +50,22 @@ jobs:
           $env:VCPKG_FEATURE_FLAGS = "binarycaching"
           echo "VCPKG_ROOT=C:/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Install dependencies
+      - name: Verify vcpkg installation
         shell: pwsh
         run: |
           cd C:/vcpkg
-          # Install packages explicitly (not using manifest mode) so they're available for CMake configure
-          ./vcpkg install protobuf cryptopp fmt spdlog absl nlohmann-json gtest --triplet x64-windows
           ./vcpkg list --triplet x64-windows
+          Write-Host "Checking Protobuf config..."
+          $protobufConfig = "C:/vcpkg/installed/x64-windows/share/protobuf/ProtobufConfig.cmake"
+          if (Test-Path $protobufConfig) {
+            Write-Host "ProtobufConfig.cmake found at $protobufConfig"
+          } else {
+            Write-Host "ProtobufConfig.cmake NOT found at $protobufConfig"
+            # List what's in the share directory
+            if (Test-Path "C:/vcpkg/installed/x64-windows/share") {
+              Get-ChildItem "C:/vcpkg/installed/x64-windows/share" | ForEach-Object { Write-Host "  $_" }
+            }
+          }
 
       - name: Download SDR++
         id: sdrpp
@@ -120,20 +129,23 @@ jobs:
           echo "SDRPP_CMAKE_DIR=$cmakeDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Configure
-        timeout-minutes: 15
+        timeout-minutes: 20
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
-          # Don't use vcpkg toolchain file - use CMAKE_PREFIX_PATH to find vcpkg installed packages directly
-          # Packages were already installed in "Install dependencies" step to C:/vcpkg/installed/x64-windows
+          # Use vcpkg toolchain file - this is the correct way to find vcpkg packages
+          # The toolchain automatically sets up CMAKE_PREFIX_PATH to include vcpkg installed packages
           $cmakeArgs = @(
             '-S', '.'
             '-B', 'build'
             '-G', 'Visual Studio 17 2022'
             '-A', 'x64'
             '-DCMAKE_BUILD_TYPE=Release'
-            '-DCMAKE_PREFIX_PATH=C:/vcpkg/installed/x64-windows'
+            '-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
+            '-DVCPKG_INSTALLATION_ROOT=C:/vcpkg'
+            '-DVCPKG_TARGET_TRIPLET=x64-windows'
+            '-DVCPKG_MANIFEST_MODE=ON'
             '-DSDRPP_CORE_ROOT="${{ steps.sdrpp.outputs.SDRPP_ROOT }}"'
             '-DSDRPP_CMAKE_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"'
             '-DSDRPP_MODULE_CMAKE="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}/sdrpp_module.cmake"'
