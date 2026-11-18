@@ -17,7 +17,7 @@ jobs:
   build:
     name: Build Windows Release
     runs-on: windows-2022
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -81,7 +81,7 @@ jobs:
             Write-Host "WARNING: ProtobufConfig.cmake not found!"
           }
 
-      - name: Fetch SDR++ source
+      - name: Fetch SDR++ source (shallow, cached)
         if: steps.sdrpp-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
@@ -94,42 +94,24 @@ jobs:
           }
           Write-Host "SDR++ source fetched at C:/sdrpp-src"
 
-      - name: Find SDR++ include directories
+      - name: Create SDR++ CMake config (hardcoded paths - simple & fast)
         id: sdrpp-config
         shell: pwsh
         run: |
           $srcRoot = "C:/sdrpp-src"
 
-          # Find all required headers
-          Write-Host "Searching for SDR++ headers..."
+          # Known SDR++ include directories (from repo structure)
+          $includeDirs = @(
+            Join-Path $srcRoot "core/src"
+            Join-Path $srcRoot "src"
+          )
 
-          $typesHeader = Get-ChildItem $srcRoot -Recurse -Filter "types.h" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like "*dsp*" } | Select-Object -First 1
-          $moduleHeader = Get-ChildItem $srcRoot -Recurse -Filter "module.h" -ErrorAction SilentlyContinue | Select-Object -First 1
-          $guiHeader = Get-ChildItem $srcRoot -Recurse -Filter "menu.h" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like "*gui*" } | Select-Object -First 1
-
-          if (-not $typesHeader -or -not $moduleHeader -or -not $guiHeader) {
-            Write-Host "ERROR: Required headers not found"
-            if ($typesHeader) { Write-Host "  types.h: $($typesHeader.FullName)" } else { Write-Host "  types.h: NOT FOUND" }
-            if ($moduleHeader) { Write-Host "  module.h: $($moduleHeader.FullName)" } else { Write-Host "  module.h: NOT FOUND" }
-            if ($guiHeader) { Write-Host "  gui/menu.h: $($guiHeader.FullName)" } else { Write-Host "  gui/menu.h: NOT FOUND" }
-            exit 1
+          # Verify headers exist
+          foreach ($dir in $includeDirs) {
+            Write-Host "Checking $dir..."
+            Get-ChildItem $dir -Recurse -Filter "*.h" -ErrorAction SilentlyContinue | Select-Object -First 5 | ForEach-Object { Write-Host "  $_" }
           }
 
-          Write-Host "Found types.h at: $($typesHeader.FullName)"
-          Write-Host "Found module.h at: $($moduleHeader.FullName)"
-          Write-Host "Found gui/menu.h at: $($guiHeader.FullName)"
-
-          # Get include directories (parent of each header's directory)
-          $includeDirs = @(
-            $typesHeader.Directory.Parent.FullName
-            $moduleHeader.Directory.Parent.FullName
-            $guiHeader.Directory.Parent.FullName
-          ) | Select-Object -Unique
-
-          Write-Host "Include directories:"
-          $includeDirs | ForEach-Object { Write-Host "  $_" }
-
-          # Convert to forward slashes for CMake
           $includeDirsForward = $includeDirs | ForEach-Object { $_.Replace('\', '/') }
           $srcRootForward = $srcRoot.Replace('\', '/')
 
@@ -138,11 +120,10 @@ jobs:
             New-Item -ItemType Directory -Force -Path $cmakeDir | Out-Null
           }
 
-          # Create SDRPlusPlusConfig.cmake with multiple include directories
           $configFile = Join-Path $cmakeDir "SDRPlusPlusConfig.cmake"
           $includeDirsCmake = ($includeDirsForward | ForEach-Object { '"' + $_ + '"' }) -join ';'
           @(
-            '# Minimal SDRPlusPlus config for plugin building (using source headers)'
+            '# Minimal SDRPlusPlus config for plugin building'
             'set(SDRPlusPlus_VERSION "nightly")'
             'set(SDRPlusPlus_INCLUDE_DIRS ' + $includeDirsCmake + ')'
             'set(SDRPlusPlus_LIBRARY_DIRS "")'
@@ -151,8 +132,14 @@ jobs:
             'set(SDRPlusPlus_PLUGIN_INSTALL_DIR "' + $srcRootForward + '/plugins")'
           ) | ForEach-Object { $_ | Out-File -FilePath $configFile -Encoding UTF8 }
 
-          Write-Host "Created SDRPlusPlusConfig.cmake at $configFile"
+          Write-Host "Created SDRPlusPlusConfig.cmake:"
           Get-Content $configFile | ForEach-Object { Write-Host "  $_" }
+
+          # Verify file exists
+          if (-not (Test-Path $configFile)) {
+            Write-Host "ERROR: Config file not created!"
+            exit 1
+          }
 
           $moduleFile = Join-Path $cmakeDir "sdrpp_module.cmake"
           @(
@@ -177,17 +164,26 @@ jobs:
             'endfunction()'
           ) | ForEach-Object { $_ | Out-File -FilePath $moduleFile -Encoding UTF8 }
 
-          Write-Host "Created sdrpp_module.cmake at $moduleFile"
+          Write-Host "Created sdrpp_module.cmake"
 
           echo "SDRPP_CMAKE_DIR=$cmakeDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Configure
-        timeout-minutes: 15
+        timeout-minutes: 10
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
           $protobufDir = $env:PROTOBUF_CONFIG_DIR
+          $sdrppCmakeDir = "${{ steps.sdrpp-config.outputs.SDRPP_CMAKE_DIR }}"
+
+          # Verify config file exists
+          $configFile = Join-Path $sdrppCmakeDir "SDRPlusPlusConfig.cmake"
+          if (-not (Test-Path $configFile)) {
+            Write-Host "ERROR: SDRPlusPlusConfig.cmake not found at $configFile"
+            exit 1
+          }
+          Write-Host "Config file verified: $configFile"
 
           $cmakeArgs = @(
             '-S', '.'
@@ -197,9 +193,9 @@ jobs:
             '-DCMAKE_BUILD_TYPE=Release'
             '-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
             '-DVCPKG_TARGET_TRIPLET=x64-windows'
-            '-DSDRPP_CMAKE_DIR="${{ steps.sdrpp-config.outputs.SDRPP_CMAKE_DIR }}"'
-            '-DSDRPP_MODULE_CMAKE="${{ steps.sdrpp-config.outputs.SDRPP_CMAKE_DIR }}/sdrpp_module.cmake"'
-            '-DSDRPlusPlus_DIR="${{ steps.sdrpp-config.outputs.SDRPP_CMAKE_DIR }}"'
+            '-DSDRPP_CMAKE_DIR="' + $sdrppCmakeDir + '"'
+            '-DSDRPP_MODULE_CMAKE="' + $sdrppCmakeDir + '/sdrpp_module.cmake"'
+            '-DSDRPlusPlus_DIR="' + $sdrppCmakeDir + '"'
           )
 
           if ($protobufDir) {
