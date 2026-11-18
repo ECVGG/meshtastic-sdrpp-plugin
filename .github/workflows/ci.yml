@@ -127,9 +127,11 @@ jobs:
           echo "SDRPP_CMAKE_DIR=$cmakeDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Configure
-        timeout-minutes: 10
+        timeout-minutes: 15
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+
           # Set up Visual Studio environment properly - use vsdevcmd or capture vcvarsall env
           $vswhere = "${env:ProgramFiles}/Microsoft Visual Studio/Installer/vswhere.exe"
           $vcvarsPath = $null
@@ -152,20 +154,42 @@ jobs:
             }
           }
 
-          # Use vcpkg toolchain file with manifest mode (uses vcpkg.json)
-          $cmakeCmd = 'cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_INSTALLATION_ROOT=C:/vcpkg -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_MANIFEST_MODE=ON -DSDRPP_CORE_ROOT="${{ steps.sdrpp.outputs.SDRPP_ROOT }}" -DSDRPP_CMAKE_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}" -DSDRPP_MODULE_CMAKE="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}/sdrpp_module.cmake" -DSDRPlusPlus_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"'
+          # Use vcpkg toolchain file - disable manifest mode during configure to prevent re-installing packages
+          # Packages were already installed in "Install dependencies" step
+          $cmakeArgs = @(
+            '-S', '.'
+            '-B', 'build'
+            '-G', 'Visual Studio 17 2022'
+            '-A', 'x64'
+            '-DCMAKE_BUILD_TYPE=Release'
+            '-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
+            '-DVCPKG_INSTALLATION_ROOT=C:/vcpkg'
+            '-DVCPKG_TARGET_TRIPLET=x64-windows'
+            '-DVCPKG_MANIFEST_MODE=OFF'
+            '-DSDRPP_CORE_ROOT="${{ steps.sdrpp.outputs.SDRPP_ROOT }}"'
+            '-DSDRPP_CMAKE_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"'
+            '-DSDRPP_MODULE_CMAKE="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}/sdrpp_module.cmake"'
+            '-DSDRPlusPlus_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"'
+          )
+
+          Write-Host "Running cmake with arguments:"
+          Write-Host ($cmakeArgs -join ' ')
 
           if ($vcvarsPath -and (Test-Path $vcvarsPath)) {
             Write-Host "Setting up Visual Studio environment from: $vcvarsPath"
-            $quotedVcvarsPath = "`"$vcvarsPath`""
-            $fullCmd = "& cmd /c $quotedVcvarsPath x64 && $cmakeCmd"
-            Write-Host "Running cmake with VS environment..."
-            Write-Host "Command: $cmakeCmd"
-            Invoke-Expression $fullCmd
+            # Use cmd to run vcvarsall then cmake, capturing exit code properly
+            $cmdArgs = '/c', "`"$vcvarsPath`"", 'x64', '&&', 'cmake', $cmakeArgs
+            Write-Host "Running: cmd $($cmdArgs -join ' ')"
+            $exitCode = (Start-Process cmd -ArgumentList $cmdArgs -Wait -PassThru -NoNewWindow).ExitCode
+            if ($exitCode -ne 0) {
+              throw "cmake configure failed with exit code $exitCode"
+            }
           } else {
             Write-Warning "Could not find vcvarsall.bat, trying without VS environment setup"
-            Write-Host "Running: $cmakeCmd"
-            Invoke-Expression $cmakeCmd
+            $exitCode = (Start-Process cmake -ArgumentList $cmakeArgs -Wait -PassThru -NoNewWindow).ExitCode
+            if ($exitCode -ne 0) {
+              throw "cmake configure failed with exit code $exitCode"
+            }
           }
           Write-Host "Configure step completed successfully"
 
