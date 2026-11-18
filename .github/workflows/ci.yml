@@ -47,16 +47,15 @@ jobs:
             ./bootstrap-vcpkg.bat -disableMetrics 2>$null || $true
           }
           $env:VCPKG_BINARY_SOURCES = "clear;files,C:/vcpkg/downloads,readwrite"
-          $env:VCPKG_FEATURE_FLAGS = "manifests,binarycaching"
+          $env:VCPKG_FEATURE_FLAGS = "binarycaching"
           echo "VCPKG_ROOT=C:/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Install dependencies
         shell: pwsh
         run: |
           cd C:/vcpkg
-          # Install packages using manifest mode (reads vcpkg.json)
-          # Use binary caching - try to use cached binaries, fall back to building
-          ./vcpkg install --triplet x64-windows --x-manifest-root="${{ github.workspace }}"
+          # Install packages explicitly (not using manifest mode) so they're available for CMake configure
+          ./vcpkg install protobuf cryptopp fmt spdlog absl nlohmann-json gtest --triplet x64-windows
           ./vcpkg list --triplet x64-windows
 
       - name: Download SDR++
@@ -132,8 +131,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          # Use vcpkg toolchain file - disable manifest mode during configure to prevent re-installing packages
-          # Packages were already installed in "Install dependencies" step
+          # Use vcpkg toolchain file - packages installed globally in vcpkg directory
           $cmakeArgs = @(
             '-S', '.'
             '-B', 'build'
@@ -141,10 +139,6 @@ jobs:
             '-A', 'x64'
             '-DCMAKE_BUILD_TYPE=Release'
             '-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
-            '-DVCPKG_INSTALLATION_ROOT=C:/vcpkg'
-            '-DVCPKG_TARGET_TRIPLET=x64-windows'
-            '-DVCPKG_MANIFEST_MODE=OFF'
-            '-DCMAKE_PREFIX_PATH=C:/vcpkg/installed/x64-windows'
             '-DSDRPP_CORE_ROOT="${{ steps.sdrpp.outputs.SDRPP_ROOT }}"'
             '-DSDRPP_CMAKE_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"'
             '-DSDRPP_MODULE_CMAKE="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}/sdrpp_module.cmake"'
