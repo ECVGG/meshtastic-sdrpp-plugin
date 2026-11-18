@@ -47,24 +47,27 @@ jobs:
             ./bootstrap-vcpkg.bat -disableMetrics 2>$null || $true
           }
           $env:VCPKG_BINARY_SOURCES = "clear;files,C:/vcpkg/downloads,readwrite"
-          $env:VCPKG_FEATURE_FLAGS = "binarycaching"
+          $env:VCPKG_FEATURE_FLAGS = "binarycaching,manifests"
           echo "VCPKG_ROOT=C:/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # Verify vcpkg cache has required packages (no explicit install - use cached binaries)
-      - name: Verify vcpkg cache
+      - name: Install dependencies (vcpkg manifest mode)
         shell: pwsh
         run: |
-          Write-Host "=== Checking vcpkg cache ==="
-          if (Test-Path "C:/vcpkg/installed/x64-windows") {
-            Write-Host "vcpkg installed directory exists"
-            Get-ChildItem "C:/vcpkg/installed/x64-windows/share" -Directory | ForEach-Object {
-              $config = Join-Path $_.FullName "$($_.Name)Config.cmake"
-              if (Test-Path $config) {
-                Write-Host "  Found config: $config"
-              }
-            }
+          cd C:/vcpkg
+          # Use manifest mode to install all dependencies from vcpkg.json
+          # This is faster and more reliable with binary caching
+          ./vcpkg install --manifest-root ${{ github.workspace }} --triplet x64-windows
+          Write-Host "=== Installed packages ==="
+          ./vcpkg list --triplet x64-windows
+          Write-Host "=== Checking Protobuf config ==="
+          $protobufConfig = "C:/vcpkg/installed/x64-windows/share/protobuf/ProtobufConfig.cmake"
+          if (Test-Path $protobufConfig) {
+            Write-Host "ProtobufConfig.cmake found at $protobufConfig"
           } else {
-            Write-Host "WARNING: vcpkg cache not found - packages will be built from source"
+            Write-Host "ProtobufConfig.cmake NOT found at $protobufConfig"
+            if (Test-Path "C:/vcpkg/installed/x64-windows/share") {
+              Get-ChildItem "C:/vcpkg/installed/x64-windows/share" | ForEach-Object { Write-Host "  $_" }
+            }
           }
 
       - name: Download SDR++
