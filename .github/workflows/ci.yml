@@ -102,43 +102,29 @@ jobs:
         run: |
           $srcRoot = "C:/sdrpp-src"
 
-          # Search for SDR++ include directory (headers like dsp/types.h, module.h, gui/menu.h)
-          Write-Host "Searching for SDR++ include directory..."
-          $includeDirs = Get-ChildItem $srcRoot -Recurse -Directory -Filter "include" -ErrorAction SilentlyContinue
-          $foundInclude = $null
+          # Check known SDR++ include directory locations
+          $candidates = @(
+            Join-Path $srcRoot "include"
+            Join-Path $srcRoot "src"
+            Join-Path $srcRoot "src/SDRPlusPlus"
+            $srcRoot
+          )
 
-          foreach ($dir in $includeDirs) {
-            # Check if this include directory has the SDR++ headers we need
-            if (Test-Path (Join-Path $dir.FullName "dsp/types.h") -and
-                Test-Path (Join-Path $dir.FullName "module.h") -and
-                Test-Path (Join-Path $dir.FullName "gui/menu.h")) {
-              $foundInclude = $dir.FullName
+          $foundInclude = $null
+          foreach ($path in $candidates) {
+            if (Test-Path (Join-Path $path "dsp/types.h") -and
+                Test-Path (Join-Path $path "module.h") -and
+                Test-Path (Join-Path $path "gui/menu.h")) {
+              $foundInclude = $path
               Write-Host "Found SDR++ include directory at: $foundInclude"
               break
             }
           }
 
           if (-not $foundInclude) {
-            # Fallback: check common locations
-            $commonPaths = @(
-              Join-Path $srcRoot "include"
-              Join-Path $srcRoot "src"
-              Join-Path $srcRoot "src/sdrpp"
-              Join-Path $srcRoot "SDRPlusPlus"
-            )
-            foreach ($path in $commonPaths) {
-              if (Test-Path (Join-Path $path "dsp/types.h") -and
-                  Test-Path (Join-Path $path "module.h") -and
-                  Test-Path (Join-Path $path "gui/menu.h")) {
-                $foundInclude = $path
-                Write-Host "Found SDR++ include directory at fallback path: $foundInclude"
-                break
-              }
-            }
-          }
-
-          if (-not $foundInclude) {
             Write-Host "ERROR: Could not find SDR++ include directory with required headers!"
+            Write-Host "Checked paths:"
+            $candidates | ForEach-Object { Write-Host "  $_" }
             Write-Host "Listing directories in source root:"
             Get-ChildItem $srcRoot -Directory | ForEach-Object { Write-Host "  $_" }
             exit 1
