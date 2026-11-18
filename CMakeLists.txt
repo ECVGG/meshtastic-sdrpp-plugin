@@ -12,7 +12,8 @@ find_package(spdlog REQUIRED)
 find_package(absl REQUIRED)
 
 # Find SDR++ package (provides SDRPlusPlus_INCLUDE_DIRS, SDRPlusPlus_LIBRARIES, and sdrpp_add_module)
-find_package(SDRPlusPlus REQUIRED)
+# Use NO_CMAKE_PATH to avoid vcpkg's find_package wrapper intercepting it
+find_package(SDRPlusPlus REQUIRED NO_CMAKE_PATH)
 
 # Proto files from Meshtastic firmware submodule (proto/meshtastic/protobufs/meshtastic/)
 set(MESHTASTIC_PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/protobufs/meshtastic")
