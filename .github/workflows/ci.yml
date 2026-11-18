@@ -9,6 +9,7 @@ on:
   workflow_dispatch:
 
 env:
+  VCPKG_VERSION: "2024.06.14"
   SDRPP_URL: "https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/sdrpp_windows_x64.zip"
 
 jobs:
@@ -21,17 +22,42 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup vcpkg
-        uses: microsoft/vcpkg@2024.06.14
+      - name: Cache vcpkg
+        id: vcpkg-cache
+        uses: actions/cache@v4
         with:
-          vcpkgVersion: '2024.06.14'
-          triplet: 'x64-windows'
-          binaryCache: true
-          cacheKey: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
-          cachePaths: |
+          path: |
             C:/vcpkg/installed
             C:/vcpkg/packages
             C:/vcpkg/downloads
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_VERSION }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ env.VCPKG_VERSION }}-
+            vcpkg-${{ runner.os }}-
+
+      - name: Setup vcpkg
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "C:/vcpkg")) {
+            git clone --depth 1 --branch ${{ env.VCPKG_VERSION }} https://github.com/microsoft/vcpkg.git C:/vcpkg
+            cd C:/vcpkg; ./bootstrap-vcpkg.bat -disableMetrics
+          } else {
+            cd C:/vcpkg
+            git checkout ${{ env.VCPKG_VERSION }} 2>$null || $true
+            ./bootstrap-vcpkg.bat -disableMetrics 2>$null || $true
+          }
+          $env:VCPKG_BINARY_SOURCES = "clear;files,C:/vcpkg/downloads,readwrite"
+          $env:VCPKG_FEATURE_FLAGS = "manifests,binarycaching"
+          echo "VCPKG_ROOT=C:/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          cd C:/vcpkg
+          # Install packages using manifest mode (reads vcpkg.json)
+          # Use binary caching - try to use cached binaries, fall back to building
+          ./vcpkg install --triplet x64-windows --x-manifest-root="${{ github.workspace }}"
+          ./vcpkg list --triplet x64-windows
 
       - name: Download SDR++
         id: sdrpp
@@ -125,13 +151,10 @@ jobs:
           }
 
           # Use vcpkg toolchain file with manifest mode (uses vcpkg.json)
-          # The vcpkg action sets up VCPKG_ROOT and installs packages
-          $cmakeCmd = 'cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows -DSDRPP_CORE_ROOT="${{ steps.sdrpp.outputs.SDRPP_ROOT }}" -DSDRPP_CMAKE_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}" -DSDRPP_MODULE_CMAKE="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}/sdrpp_module.cmake" -DSDRPlusPlus_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"'
+          $cmakeCmd = 'cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_INSTALLATION_ROOT=C:/vcpkg -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_MANIFEST_MODE=ON -DSDRPP_CORE_ROOT="${{ steps.sdrpp.outputs.SDRPP_ROOT }}" -DSDRPP_CMAKE_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}" -DSDRPP_MODULE_CMAKE="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}/sdrpp_module.cmake" -DSDRPlusPlus_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"'
 
           if ($vcvarsPath -and (Test-Path $vcvarsPath)) {
             Write-Host "Setting up Visual Studio environment from: $vcvarsPath"
-            # Use cmd /c to run vcvarsall then cmake in same process so env vars persist
-            # Quote the vcvarsPath because it may contain spaces (e.g., "Program Files")
             $quotedVcvarsPath = "`"$vcvarsPath`""
             $fullCmd = "& cmd /c $quotedVcvarsPath x64 && $cmakeCmd"
             Write-Host "Running cmake with VS environment..."
