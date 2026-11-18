@@ -144,6 +144,7 @@ jobs:
             '-DVCPKG_INSTALLATION_ROOT=C:/vcpkg'
             '-DVCPKG_TARGET_TRIPLET=x64-windows'
             '-DVCPKG_MANIFEST_MODE=OFF'
+            '-DCMAKE_PREFIX_PATH=C:/vcpkg/installed/x64-windows'
             '-DSDRPP_CORE_ROOT="${{ steps.sdrpp.outputs.SDRPP_ROOT }}"'
             '-DSDRPP_CMAKE_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"'
             '-DSDRPP_MODULE_CMAKE="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}/sdrpp_module.cmake"'
