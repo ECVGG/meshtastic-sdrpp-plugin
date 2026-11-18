@@ -9,57 +9,29 @@ on:
   workflow_dispatch:
 
 env:
-  VCPKG_VERSION: "2024.06.14"
   SDRPP_URL: "https://github.com/AlexandreRouma/SDRPlusPlus/releases/download/nightly/sdrpp_windows_x64.zip"
 
 jobs:
   build:
     name: Build Windows Release
     runs-on: windows-2022
-    timeout-minutes: 480
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Cache vcpkg
-        id: vcpkg-cache
-        uses: actions/cache@v4
+      - name: Setup vcpkg
+        uses: microsoft/vcpkg@v3
         with:
-          path: |
+          vcpkgVersion: '2024.06.14'
+          triplet: 'x64-windows'
+          binaryCache: true
+          cacheKey: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+          cachePaths: |
             C:/vcpkg/installed
             C:/vcpkg/packages
             C:/vcpkg/downloads
-            C:/vcpkg/binarycache
-          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_VERSION }}-${{ hashFiles('vcpkg.json') }}
-          restore-keys: |
-            vcpkg-${{ runner.os }}-${{ env.VCPKG_VERSION }}-
-            vcpkg-${{ runner.os }}-
-
-      - name: Setup vcpkg
-        shell: pwsh
-        run: |
-          if (-not (Test-Path "C:/vcpkg")) {
-            git clone --depth 1 --branch ${{ env.VCPKG_VERSION }} https://github.com/microsoft/vcpkg.git C:/vcpkg
-            cd C:/vcpkg; ./bootstrap-vcpkg.bat -disableMetrics
-          } else {
-            cd C:/vcpkg
-            git checkout ${{ env.VCPKG_VERSION }} 2>$null || $true
-            ./bootstrap-vcpkg.bat -disableMetrics 2>$null || $true
-          }
-          $env:VCPKG_BINARY_SOURCES = "clear;files,C:/vcpkg/binarycache,readwrite"
-          $env:VCPKG_FEATURE_FLAGS = "manifests,binarycaching"
-          New-Item -ItemType Directory -Force -Path C:/vcpkg/binarycache | Out-Null
-          echo "VCPKG_ROOT=C:/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Install dependencies
-        shell: pwsh
-        run: |
-          cd C:/vcpkg
-          # Install packages using manifest mode (reads vcpkg.json)
-          # Use binary caching for faster builds
-          ./vcpkg install --triplet x64-windows --x-manifest-root="${{ github.workspace }}" --feature-flags=manifests,binarycaching --binarysource="clear;files,C:/vcpkg/binarycache,readwrite"
-          ./vcpkg list --triplet x64-windows
 
       - name: Download SDR++
         id: sdrpp
@@ -127,7 +99,7 @@ jobs:
           echo "SDRPP_CMAKE_DIR=$cmakeDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Configure
-        timeout-minutes: 30
+        timeout-minutes: 10
         shell: pwsh
         run: |
           # Set up Visual Studio environment properly - use vsdevcmd or capture vcvarsall env
@@ -153,8 +125,8 @@ jobs:
           }
 
           # Use vcpkg toolchain file with manifest mode (uses vcpkg.json)
-          # This will use the packages installed in the "Install dependencies" step
-          $cmakeCmd = 'cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_INSTALLATION_ROOT=C:/vcpkg -DVCPKG_TARGET_TRIPLET=x64-windows -DVCPKG_MANIFEST_MODE=ON -DSDRPP_CORE_ROOT="${{ steps.sdrpp.outputs.SDRPP_ROOT }}" -DSDRPP_CMAKE_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}" -DSDRPP_MODULE_CMAKE="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}/sdrpp_module.cmake" -DSDRPlusPlus_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"'
+          # The vcpkg action sets up VCPKG_ROOT and installs packages
+          $cmakeCmd = 'cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows -DSDRPP_CORE_ROOT="${{ steps.sdrpp.outputs.SDRPP_ROOT }}" -DSDRPP_CMAKE_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}" -DSDRPP_MODULE_CMAKE="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}/sdrpp_module.cmake" -DSDRPlusPlus_DIR="${{ steps.sdrpp.outputs.SDRPP_CMAKE_DIR }}"'
 
           if ($vcvarsPath -and (Test-Path $vcvarsPath)) {
             Write-Host "Setting up Visual Studio environment from: $vcvarsPath"
