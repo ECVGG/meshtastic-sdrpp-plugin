@@ -22,7 +22,7 @@
 #include <deque>
 
 // Generated protobuf
-#include "mesh.pb.h"
+#include <meshtastic/mesh.pb.h>
 
 using nlohmann::json;
 

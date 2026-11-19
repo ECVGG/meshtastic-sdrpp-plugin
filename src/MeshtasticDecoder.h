@@ -1,7 +1,7 @@
 #pragma once
 
-#include <mesh.pb.h>
-#include <telemetry.pb.h>
+#include <meshtastic/mesh.pb.h>
+#include <meshtastic/telemetry.pb.h>
 #include <string>
 #include <vector>
 #include <cstdint>

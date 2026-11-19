@@ -158,7 +158,8 @@ jobs:
           }
 
           $configFile = Join-Path $cmakeDir "SDRPlusPlusConfig.cmake"
-          $includeDirsCmake = ($includeDirsForward | ForEach-Object { '"' + $_ + '"' }) -join ';'
+          # Create proper CMake list format (space-separated quoted paths)
+          $includeDirsCmake = ($includeDirsForward | ForEach-Object { '"' + $_ + '"' }) -join ' '
           @(
             '# Minimal SDRPlusPlus config for plugin building'
             'set(SDRPlusPlus_VERSION "nightly")'

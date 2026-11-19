@@ -37,10 +37,11 @@ set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/storeforward.proto"
 )
 
-# Generate protobuf files - default behavior creates meshtastic/ subdirectory in build/
-# because .proto files declare "package meshtastic;"
+# Generate protobuf files into build/meshtastic/ subdirectory
+# because .proto files declare "package meshtastic;" and import each other as "meshtastic/xxx.proto"
 protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${MESHTASTIC_PROTO_FILES}
     IMPORT_DIRS ${MESHTASTIC_PROTO_IMPORT_DIR}
+    OUTPUT_DIR meshtastic
 )
 
 # Sources - must be set before including sdrpp_module.cmake
@@ -65,9 +66,6 @@ target_include_directories(meshtastic_decoder PRIVATE
     ${Protobuf_INCLUDE_DIRS}
     # SDR++ includes (already contains core/src, src, gui, dsp, third-party/imgui from config)
     ${SDRPlusPlus_INCLUDE_DIRS}
-    # Explicit imgui path - frequency_select.h includes "imgui.h" directly
-    ${SDRPlusPlus_INCLUDE_DIRS}/third-party/imgui
-    ${SDRPlusPlus_INCLUDE_DIRS}/core/third-party/imgui
 )
 
 # Link libraries using imported targets (vcpkg provides these via toolchain)
