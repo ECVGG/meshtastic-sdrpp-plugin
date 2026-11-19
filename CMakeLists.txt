@@ -36,12 +36,37 @@ set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/storeforward.proto"
 )
 
-# Output to build/ so protobuf creates meshtastic/ subdirectory for package
-# Generated headers include each other as #include "meshtastic/xxx.pb.h"
-protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${MESHTASTIC_PROTO_FILES}
-    IMPORT_DIRS ${MESHTASTIC_PROTO_IMPORT_DIR}
-    OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}
+# Generate protobuf files with custom command to ensure package subdirectory structure
+# protobuf_generate_cpp doesn't create package subdirs with explicit file lists
+set(PROTO_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/meshtastic")
+file(MAKE_DIRECTORY ${PROTO_OUT_DIR})
+
+# Find protoc executable
+find_program(PROTOBUF_PROTOC protoc)
+
+# Custom command to generate protobuf files with proper package subdirectory
+add_custom_command(
+    OUTPUT ${PROTO_OUT_DIR}/mesh.pb.h ${PROTO_OUT_DIR}/mesh.pb.cc
+    COMMAND ${PROTOBUF_PROTOC}
+        --proto_path=${MESHTASTIC_PROTO_IMPORT_DIR}
+        --cpp_out=${PROTO_OUT_DIR}
+        ${MESHTASTIC_PROTO_FILES}
+    DEPENDS ${MESHTASTIC_PROTO_FILES}
+    COMMENT "Generating Meshtastic protobuf files"
+    VERBATIM
 )
+
+# Collect generated sources
+set(PROTO_SRCS)
+set(PROTO_HDRS)
+foreach(proto_file ${MESHTASTIC_PROTO_FILES})
+    get_filename_component(proto_name ${proto_file} NAME_WE)
+    list(APPEND PROTO_SRCS ${PROTO_OUT_DIR}/${proto_name}.pb.cc)
+    list(APPEND PROTO_HDRS ${PROTO_OUT_DIR}/${proto_name}.pb.h)
+endforeach()
+
+# Custom target to ensure proto generation runs before build
+add_custom_target(generate_protos DEPENDS ${PROTO_OUT_DIR}/mesh.pb.h)
 
 # Sources - must be set before including sdrpp_module.cmake
 file(GLOB_RECURSE SRC "src/*.cpp" "src/*.h" "include/*.h")
@@ -49,6 +74,9 @@ list(APPEND SRC ${PROTO_SRCS} ${PROTO_HDRS})
 
 # Create the module target using SDR++'s function (sdrpp_add_module from find_package)
 sdrpp_add_module(meshtastic_decoder ${SRC})
+
+# Ensure proto generation runs before building the module
+add_dependencies(meshtastic_decoder generate_protos)
 
 # Add /utf-8 for fmt Unicode support
 if (MSVC)
