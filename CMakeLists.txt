@@ -68,7 +68,15 @@ target_include_directories(meshtastic_decoder PRIVATE
     ${Protobuf_INCLUDE_DIRS}
     # SDR++ includes for imgui and other headers
     ${SDRPlusPlus_INCLUDE_DIRS}
+    # Additional SDR++ paths for imgui and widgets
+    "${SDRPlusPlus_INCLUDE_DIRS}/gui"
+    "${SDRPlusPlus_INCLUDE_DIRS}/gui/widgets"
+    "${SDRPlusPlus_INCLUDE_DIRS}/../third-party/imgui"
+    "${SDRPlusPlus_INCLUDE_DIRS}/../third-party"
 )
+
+# Ensure proto output directory exists
+file(MAKE_DIRECTORY ${MESHTASTIC_PROTO_OUTPUT_DIR})
 
 # Link libraries using imported targets (vcpkg provides these)
 target_link_libraries(meshtastic_decoder PRIVATE
