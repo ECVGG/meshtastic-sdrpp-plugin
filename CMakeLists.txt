@@ -9,6 +9,10 @@ set(Protobuf_USE_STATIC_LIBS ON)
 include("${SDRPP_CMAKE_DIR}/SDRPlusPlusConfig.cmake")
 include("${SDRPP_CMAKE_DIR}/sdrpp_module.cmake")
 
+# Find protobuf package (required for protobuf_generate_cpp)
+# vcpkg toolchain provides this via find_package
+find_package(protobuf CONFIG REQUIRED)
+
 # Proto files from Meshtastic firmware submodule (proto/meshtastic/protobufs/meshtastic/)
 set(MESHTASTIC_PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/protobufs/meshtastic")
 set(MESHTASTIC_PROTO_IMPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/protobufs")
