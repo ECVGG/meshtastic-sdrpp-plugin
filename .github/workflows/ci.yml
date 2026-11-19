@@ -96,8 +96,19 @@ jobs:
             Write-Host "Found ProtobufConfig.cmake at: $protobufDir"
             echo "PROTOBUF_CONFIG_DIR=$protobufDir" | Out-File -FilePath $env:GITHUB_ENV -Append
           } else {
-            Write-Host "WARNING: ProtobufConfig.cmake not found in cache!"
-            exit 1
+            Write-Host "WARNING: ProtobufConfig.cmake not found in cache, reinstalling..."
+            $packages = @("protobuf", "cryptopp", "abseil", "fmt", "spdlog", "nlohmann-json", "gtest")
+            ./vcpkg install $packages --triplet x64-windows
+
+            $protobufConfigs = Get-ChildItem "C:/vcpkg/installed/x64-windows" -Recurse -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue
+            if ($protobufConfigs) {
+              $protobufDir = $protobufConfigs[0].DirectoryName
+              Write-Host "Found ProtobufConfig.cmake at: $protobufDir"
+              echo "PROTOBUF_CONFIG_DIR=$protobufDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+            } else {
+              Write-Host "ERROR: ProtobufConfig.cmake still not found after reinstall!"
+              exit 1
+            }
           }
 
       - name: Fetch SDR++ source (shallow, cached)
@@ -226,7 +237,8 @@ jobs:
           )
 
           if ($protobufDir) {
-            $cmakeArgs += "-DCMAKE_PREFIX_PATH=$protobufDir;$vcpkgInstalled"
+            # Use Protobuf_DIR explicitly instead of CMAKE_PREFIX_PATH
+            $cmakeArgs += "-DProtobuf_DIR=$protobufDir"
           }
 
           Write-Host "Running cmake with arguments:"
