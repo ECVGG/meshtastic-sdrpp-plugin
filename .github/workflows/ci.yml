@@ -223,6 +223,15 @@ jobs:
           Write-Host "Config file verified: $configFile"
 
           # Use vcpkg toolchain file for proper package discovery
+          # Also pass Protobuf_DIR explicitly from the install step
+          $protobufDir = $env:PROTOBUF_CONFIG_DIR
+          if (-not $protobufDir) {
+            $protobufConfigs = Get-ChildItem "C:/vcpkg/installed/x64-windows" -Recurse -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue
+            if ($protobufConfigs) {
+              $protobufDir = $protobufConfigs[0].DirectoryName
+            }
+          }
+
           $cmakeArgs = @(
             '-S', '.'
             '-B', 'build'
@@ -235,6 +244,11 @@ jobs:
             '-DSDRPP_MODULE_CMAKE=' + $sdrppCmakeDir + '/sdrpp_module.cmake'
             '-DSDRPlusPlus_DIR=' + $sdrppCmakeDir
           )
+
+          if ($protobufDir) {
+            $cmakeArgs += '-DProtobuf_DIR=' + $protobufDir
+            Write-Host "Adding Protobuf_DIR=$protobufDir"
+          }
 
           Write-Host "Running cmake with arguments:"
           Write-Host ($cmakeArgs -join ' ')
