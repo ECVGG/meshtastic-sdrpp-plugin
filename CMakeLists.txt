@@ -36,40 +36,12 @@ set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/storeforward.proto"
 )
 
-# Generate protobuf files with custom command to ensure package subdirectory structure
-# protobuf_generate_cpp doesn't create package subdirs with explicit file lists
-set(PROTO_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/meshtastic")
-file(MAKE_DIRECTORY ${PROTO_OUT_DIR})
-
-# Use protoc from Protobuf package (vcpkg provides this)
-# Protobuf_PROTOC_EXECUTABLE is set by find_package(Protobuf)
-if(NOT Protobuf_PROTOC_EXECUTABLE)
-    message(FATAL_ERROR "Protobuf_PROTOC_EXECUTABLE not found. Protobuf package not properly configured.")
-endif()
-
-# Custom command to generate protobuf files with proper package subdirectory
-add_custom_command(
-    OUTPUT ${PROTO_OUT_DIR}/mesh.pb.h ${PROTO_OUT_DIR}/mesh.pb.cc
-    COMMAND ${Protobuf_PROTOC_EXECUTABLE}
-        --proto_path=${MESHTASTIC_PROTO_IMPORT_DIR}
-        --cpp_out=${PROTO_OUT_DIR}
-        ${MESHTASTIC_PROTO_FILES}
-    DEPENDS ${MESHTASTIC_PROTO_FILES}
-    COMMENT "Generating Meshtastic protobuf files"
-    VERBATIM
+# Generate protobuf files at configure time
+# OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR} makes protoc create meshtastic/ subdirectory for package
+protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${MESHTASTIC_PROTO_FILES}
+    IMPORT_DIRS ${MESHTASTIC_PROTO_IMPORT_DIR}
+    OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}
 )
-
-# Collect generated sources
-set(PROTO_SRCS)
-set(PROTO_HDRS)
-foreach(proto_file ${MESHTASTIC_PROTO_FILES})
-    get_filename_component(proto_name ${proto_file} NAME_WE)
-    list(APPEND PROTO_SRCS ${PROTO_OUT_DIR}/${proto_name}.pb.cc)
-    list(APPEND PROTO_HDRS ${PROTO_OUT_DIR}/${proto_name}.pb.h)
-endforeach()
-
-# Custom target to ensure proto generation runs before build
-add_custom_target(generate_protos DEPENDS ${PROTO_OUT_DIR}/mesh.pb.h)
 
 # Sources - must be set before including sdrpp_module.cmake
 file(GLOB_RECURSE SRC "src/*.cpp" "src/*.h" "include/*.h")
@@ -77,9 +49,6 @@ list(APPEND SRC ${PROTO_SRCS} ${PROTO_HDRS})
 
 # Create the module target using SDR++'s function (sdrpp_add_module from find_package)
 sdrpp_add_module(meshtastic_decoder ${SRC})
-
-# Ensure proto generation runs before building the module
-add_dependencies(meshtastic_decoder generate_protos)
 
 # Add /utf-8 for fmt Unicode support
 if (MSVC)
