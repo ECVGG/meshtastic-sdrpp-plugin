@@ -185,21 +185,22 @@ jobs:
           }
           Write-Host "Config file verified: $configFile"
 
+          # Use CMAKE_PREFIX_PATH instead of vcpkg toolchain to avoid vcpkg re-running
+          $vcpkgInstalled = "C:/vcpkg/installed/x64-windows"
           $cmakeArgs = @(
             '-S', '.'
             '-B', 'build'
             '-G', 'Visual Studio 17 2022'
             '-A', 'x64'
             '-DCMAKE_BUILD_TYPE=Release'
-            '-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake'
-            '-DVCPKG_TARGET_TRIPLET=x64-windows'
+            '-DCMAKE_PREFIX_PATH=' + $vcpkgInstalled
             '-DSDRPP_CMAKE_DIR=' + $sdrppCmakeDir
             '-DSDRPP_MODULE_CMAKE=' + $sdrppCmakeDir + '/sdrpp_module.cmake'
             '-DSDRPlusPlus_DIR=' + $sdrppCmakeDir
           )
 
           if ($protobufDir) {
-            $cmakeArgs += "-DCMAKE_PREFIX_PATH=$protobufDir"
+            $cmakeArgs += "-DCMAKE_PREFIX_PATH=$protobufDir;$vcpkgInstalled"
           }
 
           Write-Host "Running cmake with arguments:"
