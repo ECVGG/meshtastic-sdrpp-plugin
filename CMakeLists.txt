@@ -36,11 +36,10 @@ set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/storeforward.proto"
 )
 
-# Generate protobuf files at configure time
-# OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR} makes protoc create meshtastic/ subdirectory for package
+# Generate protobuf files - default behavior creates meshtastic/ subdirectory in build/
+# because .proto files declare "package meshtastic;"
 protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${MESHTASTIC_PROTO_FILES}
     IMPORT_DIRS ${MESHTASTIC_PROTO_IMPORT_DIR}
-    OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 # Sources - must be set before including sdrpp_module.cmake
