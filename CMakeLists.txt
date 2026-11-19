@@ -41,13 +41,16 @@ set(MESHTASTIC_PROTO_FILES
 set(PROTO_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/meshtastic")
 file(MAKE_DIRECTORY ${PROTO_OUT_DIR})
 
-# Find protoc executable
-find_program(PROTOBUF_PROTOC protoc)
+# Use protoc from Protobuf package (vcpkg provides this)
+# Protobuf_PROTOC_EXECUTABLE is set by find_package(Protobuf)
+if(NOT Protobuf_PROTOC_EXECUTABLE)
+    message(FATAL_ERROR "Protobuf_PROTOC_EXECUTABLE not found. Protobuf package not properly configured.")
+endif()
 
 # Custom command to generate protobuf files with proper package subdirectory
 add_custom_command(
     OUTPUT ${PROTO_OUT_DIR}/mesh.pb.h ${PROTO_OUT_DIR}/mesh.pb.cc
-    COMMAND ${PROTOBUF_PROTOC}
+    COMMAND ${Protobuf_PROTOC_EXECUTABLE}
         --proto_path=${MESHTASTIC_PROTO_IMPORT_DIR}
         --cpp_out=${PROTO_OUT_DIR}
         ${MESHTASTIC_PROTO_FILES}
