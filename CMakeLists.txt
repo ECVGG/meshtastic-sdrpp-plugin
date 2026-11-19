@@ -36,11 +36,43 @@ set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/storeforward.proto"
 )
 
-# Generate protobuf files - default behavior creates meshtastic/ subdirectory in build/
-# because .proto files declare "package meshtastic;"
-protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${MESHTASTIC_PROTO_FILES}
-    IMPORT_DIRS ${MESHTASTIC_PROTO_IMPORT_DIR}
+# Generate protobuf files into build/meshtastic/ subdirectory
+# This ensures generated headers can include each other as #include "meshtastic/xxx.pb.h"
+# Source files will include them as #include <meshtastic/mesh.pb.h>
+set(PROTO_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/meshtastic")
+file(MAKE_DIRECTORY ${PROTO_GEN_DIR})
+
+# Use custom command to run protoc directly (more reliable than protobuf_generate_cpp)
+find_program(PROTOC_EXECUTABLE protoc)
+if(NOT PROTOC_EXECUTABLE)
+    find_program(PROTOC_EXECUTABLE NAMES protoc.exe
+        PATHS "${Protobuf_INCLUDE_DIRS}/../tools/protobuf"
+        NO_DEFAULT_PATH
+    )
+endif()
+
+# Generate list of output files for dependency tracking
+set(PROTO_GEN_HDRS "")
+set(PROTO_GEN_SRCS "")
+foreach(proto_file ${MESHTASTIC_PROTO_FILES})
+    get_filename_component(proto_name ${proto_file} NAME_WE)
+    list(APPEND PROTO_GEN_HDRS "${PROTO_GEN_DIR}/${proto_name}.pb.h")
+    list(APPEND PROTO_GEN_SRCS "${PROTO_GEN_DIR}/${proto_name}.pb.cc")
+endforeach()
+
+add_custom_command(
+    OUTPUT ${PROTO_GEN_HDRS} ${PROTO_GEN_SRCS}
+    COMMAND ${PROTOC_EXECUTABLE}
+        --proto_path=${MESHTASTIC_PROTO_IMPORT_DIR}
+        --cpp_out=${PROTO_GEN_DIR}
+        ${MESHTASTIC_PROTO_FILES}
+    COMMENT "Generating Meshtastic protobuf headers and sources"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    VERBATIM
 )
+
+set(PROTO_SRCS ${PROTO_GEN_SRCS})
+set(PROTO_HDRS ${PROTO_GEN_HDRS})
 
 # Sources - must be set before including sdrpp_module.cmake
 file(GLOB_RECURSE SRC "src/*.cpp" "src/*.h" "include/*.h")

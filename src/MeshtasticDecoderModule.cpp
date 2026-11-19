@@ -6,7 +6,7 @@
 #include <gui/style.h>
 #include <imgui.h>
 #include <json.hpp>
-#include <mesh.pb.h>
+#include <meshtastic/mesh.pb.h>
 #include <memory>
 #include <string>
 #include <fstream>
