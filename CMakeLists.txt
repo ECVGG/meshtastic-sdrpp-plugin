@@ -37,12 +37,30 @@ set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/storeforward.proto"
 )
 
-# Generate protobuf files into build/meshtastic/ subdirectory
-# because .proto files declare "package meshtastic;" and import each other as "meshtastic/xxx.proto"
+# Generate protobuf files (flat in build dir)
 protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${MESHTASTIC_PROTO_FILES}
     IMPORT_DIRS ${MESHTASTIC_PROTO_IMPORT_DIR}
-    OUTPUT_DIR meshtastic
 )
+
+# Create meshtastic subdirectory and copy generated files there
+# Generated headers include each other as #include "meshtastic/xxx.pb.h"
+# so they need to be in build/meshtastic/
+add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/mesh.pb.h
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/meshtastic
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/*.pb.h
+        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/*.pb.cc
+        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/
+    DEPENDS ${PROTO_HDRS} ${PROTO_SRCS}
+    COMMENT "Copy generated protobuf files to meshtastic subdirectory"
+    VERBATIM
+)
+
+# Custom target to ensure proto files are copied before building
+add_custom_target(copy_proto_files DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/mesh.pb.h)
 
 # Sources - must be set before including sdrpp_module.cmake
 file(GLOB_RECURSE SRC "src/*.cpp" "src/*.h" "include/*.h")
@@ -50,6 +68,9 @@ list(APPEND SRC ${PROTO_SRCS} ${PROTO_HDRS})
 
 # Create the module target using SDR++'s function
 sdrpp_add_module(meshtastic_decoder ${SRC})
+
+# Ensure proto files are copied before building
+add_dependencies(meshtastic_decoder copy_proto_files)
 
 # Add /utf-8 for fmt Unicode support
 if (MSVC)
