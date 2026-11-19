@@ -206,7 +206,8 @@ jobs:
           Write-Host "Running cmake with arguments:"
           Write-Host ($cmakeArgs -join ' ')
 
-          $exitCode = & cmake @cmakeArgs
+          & cmake @cmakeArgs
+          $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) {
             throw "cmake configure failed with exit code $exitCode"
           }
