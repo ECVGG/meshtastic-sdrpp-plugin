@@ -19,8 +19,6 @@ include("${SDRPP_CMAKE_DIR}/sdrpp_module.cmake")
 # Proto files from Meshtastic firmware submodule (proto/meshtastic/protobufs/meshtastic/)
 set(MESHTASTIC_PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/protobufs/meshtastic")
 set(MESHTASTIC_PROTO_IMPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/protobufs")
-# Output to build/meshtastic/ so generated #include "meshtastic/xxx.pb.h" works from build/
-set(MESHTASTIC_PROTO_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/meshtastic")
 
 set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/mesh.proto"
@@ -38,15 +36,11 @@ set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/storeforward.proto"
 )
 
-# Add import directory for protoc to find meshtastic/xxx.proto imports
-# Output goes to build/meshtastic/ - matches package name in .proto files
+# Let protobuf_generate_cpp create package subdirectory (meshtastic/) automatically
+# This way generated headers include each other as #include "meshtastic/xxx.pb.h" correctly
 protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${MESHTASTIC_PROTO_FILES}
     IMPORT_DIRS ${MESHTASTIC_PROTO_IMPORT_DIR}
-    OUTPUT_DIR ${MESHTASTIC_PROTO_OUTPUT_DIR}
 )
-
-# Ensure output directory exists
-file(MAKE_DIRECTORY ${MESHTASTIC_PROTO_OUTPUT_DIR})
 
 # Sources - must be set before including sdrpp_module.cmake
 file(GLOB_RECURSE SRC "src/*.cpp" "src/*.h" "include/*.h")
