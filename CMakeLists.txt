@@ -19,8 +19,8 @@ include("${SDRPP_CMAKE_DIR}/sdrpp_module.cmake")
 # Proto files from Meshtastic firmware submodule (proto/meshtastic/protobufs/meshtastic/)
 set(MESHTASTIC_PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/protobufs/meshtastic")
 set(MESHTASTIC_PROTO_IMPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/protobufs")
-# Generate proto files in a meshtastic subdirectory so generated includes like "meshtastic/xxx.pb.h" work
-set(MESHTASTIC_PROTO_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/meshtastic")
+# Generate proto files directly in build/ so #include "meshtastic/xxx.pb.h" works with build/ in include path
+set(MESHTASTIC_PROTO_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 
 set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/mesh.proto"
@@ -39,7 +39,7 @@ set(MESHTASTIC_PROTO_FILES
 )
 
 # Add import directory for protoc to find meshtastic/xxx.proto imports
-# Generate output in meshtastic subdirectory so #include "meshtastic/xxx.pb.h" works
+# Generate output in build/ so #include "meshtastic/xxx.pb.h" works with build/ in include path
 protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${MESHTASTIC_PROTO_FILES}
     IMPORT_DIRS ${MESHTASTIC_PROTO_IMPORT_DIR}
     OUTPUT_DIR ${MESHTASTIC_PROTO_OUTPUT_DIR}
@@ -59,13 +59,10 @@ endif()
 
 # Additional include directories
 # Include build/ for generated proto headers (they use #include "meshtastic/xxx.pb.h")
-# Include build/meshtastic for direct includes
 target_include_directories(meshtastic_decoder PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_BINARY_DIR}
-    # Proto headers might be in build/ or build/meshtastic/ - add both to be safe
-    ${CMAKE_CURRENT_BINARY_DIR}/meshtastic
     ${Protobuf_INCLUDE_DIRS}
     # SDR++ includes (already contains core/src, src, gui, dsp, third-party/imgui from config)
     ${SDRPlusPlus_INCLUDE_DIRS}
