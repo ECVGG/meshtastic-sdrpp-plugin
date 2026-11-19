@@ -123,6 +123,11 @@ jobs:
           $includeDirs = @(
             Join-Path $srcRoot "core/src"
             Join-Path $srcRoot "src"
+            Join-Path $srcRoot "core/src/gui"
+            Join-Path $srcRoot "core/src/dsp"
+            Join-Path $srcRoot "src/gui"
+            Join-Path $srcRoot "third-party/imgui"
+            Join-Path $srcRoot "core/third-party/imgui"
           )
 
           # Verify headers exist

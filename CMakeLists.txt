@@ -58,13 +58,16 @@ if (MSVC)
 endif()
 
 # Additional include directories
-# Include build/meshtastic for generated proto headers (they use #include "meshtastic/xxx.pb.h")
+# Include build/ for generated proto headers (they use #include "meshtastic/xxx.pb.h")
+# Include build/meshtastic for direct includes
 target_include_directories(meshtastic_decoder PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_BINARY_DIR}
     ${MESHTASTIC_PROTO_OUTPUT_DIR}
     ${Protobuf_INCLUDE_DIRS}
+    # SDR++ includes for imgui and other headers
+    ${SDRPlusPlus_INCLUDE_DIRS}
 )
 
 # Link libraries using imported targets (vcpkg provides these)
