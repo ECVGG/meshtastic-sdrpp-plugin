@@ -66,13 +66,8 @@ target_include_directories(meshtastic_decoder PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}
     ${MESHTASTIC_PROTO_OUTPUT_DIR}
     ${Protobuf_INCLUDE_DIRS}
-    # SDR++ includes for imgui and other headers
+    # SDR++ includes (already contains core/src, src, gui, dsp, third-party/imgui from config)
     ${SDRPlusPlus_INCLUDE_DIRS}
-    # Additional SDR++ paths for imgui and widgets
-    "${SDRPlusPlus_INCLUDE_DIRS}/gui"
-    "${SDRPlusPlus_INCLUDE_DIRS}/gui/widgets"
-    "${SDRPlusPlus_INCLUDE_DIRS}/../third-party/imgui"
-    "${SDRPlusPlus_INCLUDE_DIRS}/../third-party"
 )
 
 # Ensure proto output directory exists

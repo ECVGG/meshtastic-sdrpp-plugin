@@ -130,8 +130,6 @@ jobs:
             Join-Path $srcRoot "core/third-party/imgui"
             Join-Path $srcRoot "core/src/gui/widgets"
             Join-Path $srcRoot "src/gui/widgets"
-            Join-Path $srcRoot "core/third-party"
-            Join-Path $srcRoot "third-party"
           )
 
           # Verify headers exist
