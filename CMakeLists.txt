@@ -36,10 +36,11 @@ set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/storeforward.proto"
 )
 
-# Let protobuf_generate_cpp create package subdirectory (meshtastic/) automatically
-# This way generated headers include each other as #include "meshtastic/xxx.pb.h" correctly
+# Output to build/ so protobuf creates meshtastic/ subdirectory for package
+# Generated headers include each other as #include "meshtastic/xxx.pb.h"
 protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${MESHTASTIC_PROTO_FILES}
     IMPORT_DIRS ${MESHTASTIC_PROTO_IMPORT_DIR}
+    OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 # Sources - must be set before including sdrpp_module.cmake
