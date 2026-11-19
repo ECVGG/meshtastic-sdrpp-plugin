@@ -9,18 +9,13 @@ set(Protobuf_USE_STATIC_LIBS ON)
 include("${SDRPP_CMAKE_DIR}/SDRPlusPlusConfig.cmake")
 include("${SDRPP_CMAKE_DIR}/sdrpp_module.cmake")
 
-# Find protobuf package (required for protobuf_generate_cpp)
-# Allow overriding Protobuf_DIR from command line for CI
-if (DEFINED ENV{PROTOBUF_CONFIG_DIR})
-    set(Protobuf_DIR "$ENV{PROTOBUF_CONFIG_DIR}" CACHE PATH "Protobuf config directory" FORCE)
-elseif (Protobuf_DIR)
-    # Already set via -DProtobuf_DIR=... from CI
-else()
-    # Try to find it in standard vcpkg location
-    set(Protobuf_DIR "C:/vcpkg/installed/x64-windows/share/protobuf" CACHE PATH "Protobuf config directory")
-endif()
-
+# Find all required packages (vcpkg toolchain provides these via find_package)
+# Explicit find_package calls needed even with vcpkg toolchain
 find_package(Protobuf CONFIG REQUIRED)
+find_package(Cryptopp CONFIG REQUIRED)
+find_package(fmt CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
+find_package(absl CONFIG REQUIRED)
 
 # Proto files from Meshtastic firmware submodule (proto/meshtastic/protobufs/meshtastic/)
 set(MESHTASTIC_PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/protobufs/meshtastic")
