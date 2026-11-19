@@ -64,7 +64,8 @@ target_include_directories(meshtastic_decoder PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_BINARY_DIR}
-    ${MESHTASTIC_PROTO_OUTPUT_DIR}
+    # Proto headers are in build/meshtastic/ but include each other as "meshtastic/xxx.pb.h"
+    # So we need the parent directory (build/) in include path
     ${Protobuf_INCLUDE_DIRS}
     # SDR++ includes (already contains core/src, src, gui, dsp, third-party/imgui from config)
     ${SDRPlusPlus_INCLUDE_DIRS}
