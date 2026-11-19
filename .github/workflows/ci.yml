@@ -63,6 +63,7 @@ jobs:
           echo "VCPKG_TOOLCHAIN_PATH=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Install dependencies
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           cd C:/vcpkg
@@ -79,6 +80,24 @@ jobs:
             echo "PROTOBUF_CONFIG_DIR=$protobufDir" | Out-File -FilePath $env:GITHUB_ENV -Append
           } else {
             Write-Host "WARNING: ProtobufConfig.cmake not found!"
+          }
+
+      - name: Verify cached dependencies
+        if: steps.vcpkg-cache.outputs.cache-hit == 'true'
+        shell: pwsh
+        run: |
+          Write-Host "=== Verifying cached packages ==="
+          ./vcpkg list --triplet x64-windows
+
+          Write-Host "=== Finding ProtobufConfig.cmake ==="
+          $protobufConfigs = Get-ChildItem "C:/vcpkg/installed/x64-windows" -Recurse -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue
+          if ($protobufConfigs) {
+            $protobufDir = $protobufConfigs[0].DirectoryName
+            Write-Host "Found ProtobufConfig.cmake at: $protobufDir"
+            echo "PROTOBUF_CONFIG_DIR=$protobufDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          } else {
+            Write-Host "WARNING: ProtobufConfig.cmake not found in cache!"
+            exit 1
           }
 
       - name: Fetch SDR++ source (shallow, cached)
