@@ -14,7 +14,6 @@ include("${SDRPP_CMAKE_DIR}/sdrpp_module.cmake")
 find_package(Protobuf CONFIG REQUIRED)
 find_package(Cryptopp CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
-find_package(spdlog CONFIG REQUIRED)
 find_package(absl CONFIG REQUIRED)
 
 # Proto files from Meshtastic firmware submodule (proto/meshtastic/protobufs/meshtastic/)
@@ -192,7 +191,6 @@ target_link_libraries(meshtastic_decoder PRIVATE
     protobuf::libprotobuf
     cryptopp::cryptopp
     fmt::fmt
-    spdlog::spdlog
     absl::strings
     absl::memory
     absl::synchronization
