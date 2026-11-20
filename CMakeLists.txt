@@ -34,6 +34,8 @@ set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/remote_hardware.proto"
     "${MESHTASTIC_PROTO_DIR}/serial_hal.proto"
     "${MESHTASTIC_PROTO_DIR}/storeforward.proto"
+    "${MESHTASTIC_PROTO_DIR}/field_metadata.proto"
+    "${MESHTASTIC_PROTO_DIR}/device_ui.proto"
 )
 
 # Generate protobuf files (flat in build dir)
@@ -59,6 +61,8 @@ set(MESHTASTIC_PROTO_BASENAMES
     remote_hardware
     serial_hal
     storeforward
+    field_metadata
+    device_ui
 )
 
 # Build list of output files for the custom target
@@ -151,6 +155,18 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_CURRENT_BINARY_DIR}/storeforward.pb.cc
         ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/storeforward.pb.cc
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/field_metadata.pb.h
+        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/field_metadata.pb.h
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/field_metadata.pb.cc
+        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/field_metadata.pb.cc
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/device_ui.pb.h
+        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/device_ui.pb.h
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/device_ui.pb.cc
+        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/device_ui.pb.cc
     DEPENDS ${PROTO_HDRS} ${PROTO_SRCS}
     COMMENT "Copy generated protobuf files to meshtastic subdirectory"
     VERBATIM
@@ -177,6 +193,7 @@ endif()
 # Additional include directories
 # Generated proto headers are in build/meshtastic/ - they include each other as #include "meshtastic/xxx.pb.h"
 # Source files include them as #include <meshtastic/mesh.pb.h> so we need build/ in include path
+# Also explicitly add imgui path since SDR++ config may not include it correctly
 target_include_directories(meshtastic_decoder PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -184,6 +201,9 @@ target_include_directories(meshtastic_decoder PRIVATE
     ${Protobuf_INCLUDE_DIRS}
     # SDR++ includes (already contains core/src, src, gui, dsp, third-party/imgui from config)
     ${SDRPlusPlus_INCLUDE_DIRS}
+    # Explicitly add imgui path for frequency_select.h and other SDR++ headers
+    ${SDRPP_CMAKE_DIR}/../../third-party/imgui
+    ${SDRPP_CMAKE_DIR}/../../core/third-party/imgui
 )
 
 # Link libraries using imported targets (vcpkg provides these via toolchain)
