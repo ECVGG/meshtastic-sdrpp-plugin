@@ -36,6 +36,8 @@ set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/storeforward.proto"
     "${MESHTASTIC_PROTO_DIR}/field_metadata.proto"
     "${MESHTASTIC_PROTO_DIR}/device_ui.proto"
+    "${MESHTASTIC_PROTO_DIR}/module_config.proto"
+    "${MESHTASTIC_PROTO_DIR}/connection_status.proto"
 )
 
 # Generate protobuf files (flat in build dir)
@@ -63,6 +65,8 @@ set(MESHTASTIC_PROTO_BASENAMES
     storeforward
     field_metadata
     device_ui
+    module_config
+    connection_status
 )
 
 # Build list of output files for the custom target
@@ -167,6 +171,18 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_CURRENT_BINARY_DIR}/device_ui.pb.cc
         ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/device_ui.pb.cc
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/module_config.pb.h
+        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/module_config.pb.h
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/module_config.pb.cc
+        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/module_config.pb.cc
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/connection_status.pb.h
+        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/connection_status.pb.h
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/connection_status.pb.cc
+        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/connection_status.pb.cc
     DEPENDS ${PROTO_HDRS} ${PROTO_SRCS}
     COMMENT "Copy generated protobuf files to meshtastic subdirectory"
     VERBATIM
