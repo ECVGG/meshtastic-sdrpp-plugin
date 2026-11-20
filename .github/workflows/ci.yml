@@ -67,41 +67,9 @@ jobs:
           Write-Host "=== Installed packages ==="
           ./vcpkg list --triplet x64-windows
 
-          # Find ProtobufConfig.cmake (typically in installed/x64-windows/share/protobuf/cmake/)
-          Write-Host "=== Finding ProtobufConfig.cmake ==="
-          # Common locations in vcpkg (search recursively in each)
-          $searchPaths = @(
-            "C:/vcpkg/installed/x64-windows/share/protobuf/cmake",
-            "C:/vcpkg/installed/x64-windows/tools/protobuf",
-            "C:/vcpkg/installed/x64-windows/share/protobuf",
-            "C:/vcpkg/installed/x64-windows/lib/cmake/protobuf",
-            "C:/vcpkg/installed/x64-windows"
-          )
-          $protobufDir = $null
-          foreach ($path in $searchPaths) {
-            $configs = Get-ChildItem $path -Recurse -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue
-            if ($configs) {
-              $protobufDir = $configs[0].DirectoryName
-              Write-Host "Found ProtobufConfig.cmake at: $protobufDir"
-              break
-            }
-          }
-          # Fallback: search everywhere
-          if (-not $protobufDir) {
-            $protobufConfigs = Get-ChildItem "C:/vcpkg" -Recurse -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue
-            if ($protobufConfigs) {
-              $protobufDir = $protobufConfigs[0].DirectoryName
-              Write-Host "Found ProtobufConfig.cmake at (fallback): $protobufDir"
-            }
-          }
-          if ($protobufDir) {
-            echo "PROTOBUF_CONFIG_DIR=$protobufDir" | Out-File -FilePath $env:GITHUB_ENV -Append
-          } else {
-            Write-Host "ERROR: ProtobufConfig.cmake not found!"
-            Write-Host "=== Checking installed directory ==="
-            Get-ChildItem "C:/vcpkg/installed/x64-windows" -Recurse -Directory -ErrorAction SilentlyContinue | Where-Object {$_.Name -like "*protobuf*"} | ForEach-Object { Write-Host "  $($_.FullName)" }
-            exit 1
-          }
+          # ProtobufConfig.cmake will be found automatically by CMake via vcpkg toolchain
+          # No need to manually locate it - the toolchain sets CMAKE_PREFIX_PATH correctly
+          Write-Host "=== vcpkg installed, Protobuf will be found via toolchain ==="
 
       - name: Fetch SDR++ source (shallow, cached)
         if: steps.sdrpp-cache.outputs.cache-hit != 'true'
@@ -215,14 +183,7 @@ jobs:
           }
           Write-Host "Config file verified: $configFile"
 
-          # Use Protobuf_DIR from environment (set in setup step)
-          $protobufDir = $env:PROTOBUF_CONFIG_DIR
-          if (-not $protobufDir) {
-            Write-Host "ERROR: PROTOBUF_CONFIG_DIR not set in environment!"
-            exit 1
-          }
-          Write-Host "Using Protobuf_DIR=$protobufDir"
-
+          # Let CMake find Protobuf automatically via vcpkg toolchain (no manual Protobuf_DIR needed)
           $cmakeArgs = @(
             '-S', '.'
             '-B', 'build'
@@ -235,7 +196,6 @@ jobs:
             '-DSDRPP_CMAKE_DIR=' + $sdrppCmakeDir
             '-DSDRPP_MODULE_CMAKE=' + $sdrppCmakeDir + '/sdrpp_module.cmake'
             '-DSDRPlusPlus_DIR=' + $sdrppCmakeDir
-            '-DProtobuf_DIR=' + $protobufDir
           )
 
           Write-Host "Running cmake with arguments:"
