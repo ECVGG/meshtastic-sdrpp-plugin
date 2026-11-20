@@ -1,6 +1,6 @@
 #include "MeshtasticDecoder.h"
-#include <meshtastic/mesh.pb.h>
-#include <meshtastic/telemetry.pb.h>
+#include <mesh.pb.h>
+#include <telemetry.pb.h>
 #include <string>
 #include <cstring>
 #include <iostream>

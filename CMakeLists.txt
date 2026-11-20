@@ -39,6 +39,7 @@ set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/module_config.proto"
     "${MESHTASTIC_PROTO_DIR}/connection_status.proto"
     "${MESHTASTIC_PROTO_DIR}/atak.proto"
+    "${MESHTASTIC_PROTO_DIR}/xmodem.proto"
 )
 
 # Generate protobuf files (flat in build dir)
@@ -69,6 +70,7 @@ set(MESHTASTIC_PROTO_BASENAMES
     module_config
     connection_status
     atak
+    xmodem
 )
 
 # Build list of output files for the custom target
@@ -191,6 +193,12 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_CURRENT_BINARY_DIR}/atak.pb.cc
         ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/atak.pb.cc
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/xmodem.pb.h
+        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/xmodem.pb.h
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/xmodem.pb.cc
+        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/xmodem.pb.cc
     DEPENDS ${PROTO_HDRS} ${PROTO_SRCS}
     COMMENT "Copy generated protobuf files to meshtastic subdirectory"
     VERBATIM
