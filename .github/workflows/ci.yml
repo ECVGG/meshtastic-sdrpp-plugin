@@ -71,6 +71,7 @@ jobs:
           Write-Host "=== Finding ProtobufConfig.cmake ==="
           # Common locations in vcpkg
           $searchPaths = @(
+            "C:/vcpkg/installed/x64-windows/tools/protobuf",
             "C:/vcpkg/installed/x64-windows/share/protobuf",
             "C:/vcpkg/installed/x64-windows/share/protobuf/cmake",
             "C:/vcpkg/installed/x64-windows/lib/cmake/protobuf",
