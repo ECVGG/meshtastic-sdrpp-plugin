@@ -67,7 +67,7 @@ jobs:
         shell: pwsh
         run: |
           cd C:/vcpkg
-          $packages = @("protobuf", "cryptopp", "abseil", "fmt", "spdlog", "nlohmann-json", "gtest")
+          $packages = @("protobuf", "cryptopp", "abseil", "fmt", "nlohmann-json", "gtest")
           ./vcpkg install $packages --triplet x64-windows
           Write-Host "=== Installed packages ==="
           ./vcpkg list --triplet x64-windows
@@ -97,7 +97,7 @@ jobs:
             echo "PROTOBUF_CONFIG_DIR=$protobufDir" | Out-File -FilePath $env:GITHUB_ENV -Append
           } else {
             Write-Host "WARNING: ProtobufConfig.cmake not found in cache, reinstalling..."
-            $packages = @("protobuf", "cryptopp", "abseil", "fmt", "spdlog", "nlohmann-json", "gtest")
+            $packages = @("protobuf", "cryptopp", "abseil", "fmt", "nlohmann-json", "gtest")
             ./vcpkg install $packages --triplet x64-windows
 
             $protobufConfigs = Get-ChildItem "C:/vcpkg/installed/x64-windows" -Recurse -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue

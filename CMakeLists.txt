@@ -38,6 +38,7 @@ set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/device_ui.proto"
     "${MESHTASTIC_PROTO_DIR}/module_config.proto"
     "${MESHTASTIC_PROTO_DIR}/connection_status.proto"
+    "${MESHTASTIC_PROTO_DIR}/atak.proto"
 )
 
 # Generate protobuf files (flat in build dir)
@@ -67,6 +68,7 @@ set(MESHTASTIC_PROTO_BASENAMES
     device_ui
     module_config
     connection_status
+    atak
 )
 
 # Build list of output files for the custom target
@@ -183,6 +185,12 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_CURRENT_BINARY_DIR}/connection_status.pb.cc
         ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/connection_status.pb.cc
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/atak.pb.h
+        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/atak.pb.h
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/atak.pb.cc
+        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/atak.pb.cc
     DEPENDS ${PROTO_HDRS} ${PROTO_SRCS}
     COMMENT "Copy generated protobuf files to meshtastic subdirectory"
     VERBATIM
@@ -218,8 +226,9 @@ target_include_directories(meshtastic_decoder PRIVATE
     # SDR++ includes (already contains core/src, src, gui, dsp, third-party/imgui from config)
     ${SDRPlusPlus_INCLUDE_DIRS}
     # Explicitly add imgui path for frequency_select.h and other SDR++ headers
-    ${SDRPP_CMAKE_DIR}/../../third-party/imgui
-    ${SDRPP_CMAKE_DIR}/../../core/third-party/imgui
+    # SDR++ source is at C:/sdrpp-src, config at C:/sdrpp-cmake/SDRPlusPlus
+    ${SDRPP_CMAKE_DIR}/../../../sdrpp-src/third-party/imgui
+    ${SDRPP_CMAKE_DIR}/../../../sdrpp-src/core/third-party/imgui
 )
 
 # Link libraries using imported targets (vcpkg provides these via toolchain)
