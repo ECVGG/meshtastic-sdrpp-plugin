@@ -1,24 +1,35 @@
 #pragma once
 
-#include <ModuleManager/Instance.h>
-#include <config.h>
+#include <module.h>
 #include <imgui.h>
-#include <gui/widgets/folder_select.h>
 #include <json.hpp>
 #include <string>
 #include <memory>
-#include <string>
 #include <mutex>
-#include <fstream>
-#include <cstdint>
+#include <deque>
+#include <chrono>
+#include <filesystem>
 
 #include <LoRaDemodulator.h>
 #include <MeshtasticDecoder.h>
 #include <MeshtasticDecryptor.h>
+#include <MeshtasticProtocol.h>
+
+// Forward declare SDR++ types to avoid heavy includes in header
+namespace sigpath {
+    class VFOManager;
+    struct VFO;
+}
+namespace dsp {
+    namespace sink {
+        template<typename T> class Handler;
+    }
+    struct complex_t;
+}
 
 class MeshtasticDecoderModule : public ModuleManager::Instance {
 public:
-    MeshtasticDecoderModule(std::string name);
+    explicit MeshtasticDecoderModule(std::string name);
     ~MeshtasticDecoderModule() override;
 
     void postInit() override;
@@ -26,13 +37,21 @@ public:
     void disable() override;
     bool isEnabled() override;
 
-    void drawGUI();
-
 private:
+    // Configuration
+    void applyChannelPreset(int channelIdx);
+    void saveConfig();
+    void updateLoRaConfig();
+    static void menuHandler(void* ctx);
+    static void iqHandlerCallback(dsp::complex_t* data, int count, void* ctx);
+    void processIQSamples(const dsp::complex_t* data, size_t len);
+
     std::string name;
     bool enabled = false;
+    std::unique_ptr<class PluginConfig> config;
 
-    // Configuration
+    // Channel/PSK settings
+    int selectedChannelIndex = 0;
     int channelIndex = 0;
     std::string channelName = "Primary";
     std::string pskInput = "";
@@ -43,7 +62,7 @@ private:
     // LoRa Configuration
     struct LoRaConfig {
         int spreadingFactor = 7;
-        int bandwidth = 125000;
+        int bandwidth = 250000;
         int codingRate = 5;
         int preambleLength = 8;
         uint8_t syncWord = 0x34;
@@ -58,19 +77,29 @@ private:
     uint64_t packetsReceived = 0;
     uint64_t packetsDecoded = 0;
     uint64_t packetsDecrypted = 0;
-    bool enabled = false;
 
     // Components
-    class LoRaDemodulator loraDemod;
-    class MeshtasticDecoder decoder;
-    class MeshtasticDecryptor decryptor;
+    LoRaDemodulator loraDemod;
+    MeshtasticDecoder decoder;
+    MeshtasticDecryptor decryptor;
 
-    // GUI
-    class FolderSelect folderSelect;
-    std::string pskInput = "";
-    std::string channelName = "Primary";
-    std::string appKeyInput = "";
-    std::string networkKeyInput = "";
-    bool useAES256 = false;
-    int channelIndex = 0;
+    // Signal path
+    sigpath::VFO* vfo = nullptr;
+    dsp::sink::Handler<dsp::complex_t> iqHandler;
+
+    // Message storage
+    struct DecodedMessage {
+        std::string timestamp;
+        uint32_t fromNode = 0;
+        uint32_t toNode = 0;
+        std::string portName;
+        std::string text;
+        std::string position;
+        std::string telemetry;
+        int rssi = 0;
+        float snr = 0.0f;
+    };
+    std::deque<DecodedMessage> messages;
+    std::mutex messagesMutex;
+    static constexpr size_t MAX_MESSAGES = 100;
 };

@@ -6,7 +6,6 @@
     "cryptopp",
     "abseil",
     "fmt",
-    "nlohmann-json",
-    "gtest"
+    "nlohmann-json"
   ]
 }

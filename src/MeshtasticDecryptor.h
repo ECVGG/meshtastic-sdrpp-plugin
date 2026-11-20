@@ -22,6 +22,11 @@ public:
     // Set keys from PSK (Pre-Shared Key) using PBKDF2
     bool setKeyFromPSK(const std::string& psk, bool isAppKey = true);
 
+    // Convenience: set both app and network key from same PSK (Meshtastic standard)
+    bool setPSK(const std::string& psk, bool useAES256 = false) {
+        return setKeyFromPSK(psk, true) && setKeyFromPSK(psk, false);
+    }
+
     // Decrypt a Meshtastic packet payload
     // Returns empty vector on failure
     std::vector<uint8_t> decryptPacket(const std::vector<uint8_t>& encryptedPayload,

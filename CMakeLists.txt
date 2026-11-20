@@ -40,6 +40,7 @@ set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/connection_status.proto"
     "${MESHTASTIC_PROTO_DIR}/atak.proto"
     "${MESHTASTIC_PROTO_DIR}/xmodem.proto"
+    "${MESHTASTIC_PROTO_DIR}/nanopb.proto"
 )
 
 # Generate protobuf files (flat in build dir)
@@ -71,6 +72,7 @@ set(MESHTASTIC_PROTO_BASENAMES
     connection_status
     atak
     xmodem
+    nanopb
 )
 
 # Build list of output files for the custom target
@@ -199,6 +201,12 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_CURRENT_BINARY_DIR}/xmodem.pb.cc
         ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/xmodem.pb.cc
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/nanopb.pb.h
+        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/nanopb.pb.h
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_BINARY_DIR}/nanopb.pb.cc
+        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/nanopb.pb.cc
     DEPENDS ${PROTO_HDRS} ${PROTO_SRCS}
     COMMENT "Copy generated protobuf files to meshtastic subdirectory"
     VERBATIM
@@ -225,25 +233,13 @@ endif()
 # Additional include directories
 # Generated proto headers are in build/meshtastic/ - they include each other as #include "meshtastic/xxx.pb.h"
 # Source files include them as #include <meshtastic/mesh.pb.h> so we need build/ in include path
-# Also explicitly add imgui path since SDR++ config may not include it correctly
+# SDRPlusPlus_INCLUDE_DIRS already contains imgui paths from the generated config
 target_include_directories(meshtastic_decoder PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_BINARY_DIR}
     ${Protobuf_INCLUDE_DIRS}
-    # SDR++ includes (already contains core/src, src, gui, dsp, third-party/imgui from config)
     ${SDRPlusPlus_INCLUDE_DIRS}
-    # Explicitly add imgui path for frequency_select.h and other SDR++ headers
-    # SDR++ source is at C:/sdrpp-src, config at C:/sdrpp-cmake/SDRPlusPlus
-    ${SDRPP_CMAKE_DIR}/../../../sdrpp-src/third-party/imgui
-    ${SDRPP_CMAKE_DIR}/../../../sdrpp-src/core/third-party/imgui
-)
-
-# Fix for Windows: Convert relative paths to absolute for imgui
-get_filename_component(SDRPP_SRC_DIR "${SDRPP_CMAKE_DIR}/../../../sdrpp-src" ABSOLUTE)
-target_include_directories(meshtastic_decoder PRIVATE
-    ${SDRPP_SRC_DIR}/third-party/imgui
-    ${SDRPP_SRC_DIR}/core/third-party/imgui
 )
 
 # Link libraries using imported targets (vcpkg provides these via toolchain)

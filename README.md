@@ -81,7 +81,7 @@ For the default Meshtastic public channel:
 
 - SDR++ v1.3+
 - Windows x64 (pre-built DLL)
-- For building: vcpkg with protobuf, cryptopp, fmt, spdlog, abseil
+- For building: vcpkg with protobuf, cryptopp, fmt, abseil, nlohmann-json
 
 ## LoRa Parameters (Meshtastic Default)
 
@@ -98,8 +98,8 @@ For the default Meshtastic public channel:
 ## Architecture
 
 ```
-IQ Samples → VFO → LoRa Demodulator → Mesh Header Parser → AES-CTR Decryptor → Protobuf Parser → GUI
-                ↓
+IQ Samples -> VFO -> LoRa Demodulator -> Mesh Header Parser -> AES-CTR Decryptor -> Protobuf Parser -> GUI
+                |
          Preamble Detection
          CSS Demodulation (SF7-SF12)
          Deinterleaving (matrix transpose)
@@ -109,17 +109,17 @@ IQ Samples → VFO → LoRa Demodulator → Mesh Header Parser → AES-CTR Decry
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MPL-2.0 License - see [LICENSE](LICENSE) for details.
 
 ### Dependency Licenses
 
-| Dependency | License | Compatible with MIT |
-|------------|---------|---------------------|
+| Dependency | License | Compatible with MPL-2.0 |
+|------------|---------|------------------------|
 | protobuf | BSD-3-Clause | Yes |
 | Crypto++ | BSD-3-Clause | Yes |
 | fmt | MIT | Yes |
-| spdlog | MIT | Yes |
 | abseil | Apache-2.0 | Yes (with attribution) |
+| nlohmann-json | MIT | Yes |
 | SDR++ API | GPL-3.0 | Plugin links dynamically |
 
 
