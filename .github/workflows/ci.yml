@@ -241,6 +241,7 @@ jobs:
             '-DCMAKE_BUILD_TYPE=Release'
             '-DCMAKE_TOOLCHAIN_FILE=' + $vcpkgToolchain
             '-DVCPKG_TARGET_TRIPLET=x64-windows'
+            '-DVCPKG_MANIFEST_MODE=OFF'
             '-DSDRPP_CMAKE_DIR=' + $sdrppCmakeDir
             '-DSDRPP_MODULE_CMAKE=' + $sdrppCmakeDir + '/sdrpp_module.cmake'
             '-DSDRPlusPlus_DIR=' + $sdrppCmakeDir
