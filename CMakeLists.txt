@@ -239,6 +239,13 @@ target_include_directories(meshtastic_decoder PRIVATE
     ${SDRPP_CMAKE_DIR}/../../../sdrpp-src/core/third-party/imgui
 )
 
+# Fix for Windows: Convert relative paths to absolute for imgui
+get_filename_component(SDRPP_SRC_DIR "${SDRPP_CMAKE_DIR}/../../../sdrpp-src" ABSOLUTE)
+target_include_directories(meshtastic_decoder PRIVATE
+    ${SDRPP_SRC_DIR}/third-party/imgui
+    ${SDRPP_SRC_DIR}/core/third-party/imgui
+)
+
 # Link libraries using imported targets (vcpkg provides these via toolchain)
 target_link_libraries(meshtastic_decoder PRIVATE
     protobuf::libprotobuf

@@ -1,6 +1,6 @@
-#include "MeshtasticDecoder.h"
-#include <mesh.pb.h>
-#include <telemetry.pb.h>
+﻿#include "MeshtasticDecoder.h"
+#include <meshtastic/mesh.pb.h>
+#include <meshtastic/telemetry.pb.h>
 #include <string>
 #include <cstring>
 #include <iostream>
@@ -25,13 +25,22 @@ std::optional<meshtastic::MeshPacket> MeshtasticDecoder::parsePacket(const std::
 
 bool MeshtasticDecoder::parseAppPayload(const meshtastic::MeshPacket& meshPacket,
                                         google::protobuf::Message& appPacket) {
-    if (meshPacket.payload().empty()) {
+    // MeshPacket uses oneof payload_variant with 'decoded' (Data) or 'encrypted' (bytes)
+    // We need to check which variant is present
+    if (!meshPacket.has_decoded() && meshPacket.encrypted().empty()) {
         lastError = "Empty application payload";
         return false;
     }
 
     try {
-        return appPacket.ParseFromString(meshPacket.payload());
+        if (meshPacket.has_decoded()) {
+            // Decoded payload is a Data protobuf message
+            const meshtastic::Data& data = meshPacket.decoded();
+            return appPacket.ParseFromString(data.payload());
+        } else {
+            // Encrypted payload is raw bytes
+            return appPacket.ParseFromString(meshPacket.encrypted());
+        }
     } catch (const std::exception& e) {
         lastError = std::string("Failed to parse app payload: ") + e.what();
         return false;

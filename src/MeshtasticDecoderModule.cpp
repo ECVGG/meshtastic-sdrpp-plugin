@@ -1,4 +1,4 @@
-// Meshtastic Decoder Module for SDR++ Portable
+﻿// Meshtastic Decoder Module for SDR++ Portable
 // Self-contained plugin with own config management
 
 #include <module.h>
@@ -6,7 +6,7 @@
 #include <gui/style.h>
 #include <imgui.h>
 #include <json.hpp>
-#include <mesh.pb.h>
+#include <meshtastic/mesh.pb.h>
 #include <memory>
 #include <string>
 #include <fstream>
@@ -642,7 +642,14 @@ private:
                     break;
                 }
                 default:
-                    msg.text = fmt::format("Raw payload ({} bytes)", meshPacket.payload().size());
+                    // MeshPacket uses oneof payload_variant - check which is present
+                    size_t payloadSize = 0;
+                    if (meshPacket.has_decoded()) {
+                        payloadSize = meshPacket.decoded().payload().size();
+                    } else if (!meshPacket.encrypted().empty()) {
+                        payloadSize = meshPacket.encrypted().size();
+                    }
+                    msg.text = fmt::format("Raw payload ({} bytes)", payloadSize);
                     break;
             }
 

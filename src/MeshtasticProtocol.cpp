@@ -1,6 +1,6 @@
-#include "MeshtasticProtocol.h"
-#include <mesh.pb.h>
-#include <telemetry.pb.h>
+﻿#include "MeshtasticProtocol.h"
+#include <meshtastic/mesh.pb.h>
+#include <meshtastic/telemetry.pb.h>
 #include <string>
 #include <algorithm>
 
@@ -57,12 +57,18 @@ std::optional<meshtastic::MeshPacket> MeshtasticProtocol::parsePacket(const std:
 
 bool MeshtasticProtocol::parseAppPayload(const meshtastic::MeshPacket& meshPacket,
                                          google::protobuf::Message& appPacket) {
-    if (meshPacket.payload().empty()) {
+    // MeshPacket uses oneof payload_variant with 'decoded' (Data) or 'encrypted' (bytes)
+    if (!meshPacket.has_decoded() && meshPacket.encrypted().empty()) {
         return false;
     }
 
     try {
-        return appPacket.ParseFromString(meshPacket.payload());
+        if (meshPacket.has_decoded()) {
+            const meshtastic::Data& data = meshPacket.decoded();
+            return appPacket.ParseFromString(data.payload());
+        } else {
+            return appPacket.ParseFromString(meshPacket.encrypted());
+        }
     } catch (const std::exception&) {
         return false;
     }
