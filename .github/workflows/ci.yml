@@ -67,17 +67,38 @@ jobs:
           Write-Host "=== Installed packages ==="
           ./vcpkg list --triplet x64-windows
 
-          # Find ProtobufConfig.cmake (search more broadly as vcpkg layout varies)
+          # Find ProtobufConfig.cmake (typically in installed/x64-windows/share/protobuf/)
           Write-Host "=== Finding ProtobufConfig.cmake ==="
-          $protobufConfigs = Get-ChildItem "C:/vcpkg" -Recurse -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue
-          if ($protobufConfigs) {
-            $protobufDir = $protobufConfigs[0].DirectoryName
-            Write-Host "Found ProtobufConfig.cmake at: $protobufDir"
+          # Common locations in vcpkg
+          $searchPaths = @(
+            "C:/vcpkg/installed/x64-windows/share/protobuf",
+            "C:/vcpkg/installed/x64-windows/share/protobuf/cmake",
+            "C:/vcpkg/installed/x64-windows/lib/cmake/protobuf",
+            "C:/vcpkg/installed/x64-windows"
+          )
+          $protobufDir = $null
+          foreach ($path in $searchPaths) {
+            $configs = Get-ChildItem $path -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue
+            if ($configs) {
+              $protobufDir = $configs[0].DirectoryName
+              Write-Host "Found ProtobufConfig.cmake at: $protobufDir"
+              break
+            }
+          }
+          # Fallback: search everywhere
+          if (-not $protobufDir) {
+            $protobufConfigs = Get-ChildItem "C:/vcpkg" -Recurse -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue
+            if ($protobufConfigs) {
+              $protobufDir = $protobufConfigs[0].DirectoryName
+              Write-Host "Found ProtobufConfig.cmake at (fallback): $protobufDir"
+            }
+          }
+          if ($protobufDir) {
             echo "PROTOBUF_CONFIG_DIR=$protobufDir" | Out-File -FilePath $env:GITHUB_ENV -Append
           } else {
-            Write-Host "ERROR: ProtobufConfig.cmake not found anywhere in C:/vcpkg!"
-            Write-Host "=== Listing vcpkg directory structure ==="
-            Get-ChildItem "C:/vcpkg" -Recurse -Directory -ErrorAction SilentlyContinue | Where-Object {$_.Name -like "*protobuf*"} | ForEach-Object { Write-Host "  $($_.FullName)" }
+            Write-Host "ERROR: ProtobufConfig.cmake not found!"
+            Write-Host "=== Checking installed directory ==="
+            Get-ChildItem "C:/vcpkg/installed/x64-windows" -Recurse -Directory -ErrorAction SilentlyContinue | Where-Object {$_.Name -like "*protobuf*"} | ForEach-Object { Write-Host "  $($_.FullName)" }
             exit 1
           }
 
