@@ -69,17 +69,16 @@ jobs:
 
           # Find ProtobufConfig.cmake (typically in installed/x64-windows/share/protobuf/)
           Write-Host "=== Finding ProtobufConfig.cmake ==="
-          # Common locations in vcpkg
+          # Common locations in vcpkg (search recursively in each)
           $searchPaths = @(
             "C:/vcpkg/installed/x64-windows/tools/protobuf",
             "C:/vcpkg/installed/x64-windows/share/protobuf",
-            "C:/vcpkg/installed/x64-windows/share/protobuf/cmake",
             "C:/vcpkg/installed/x64-windows/lib/cmake/protobuf",
             "C:/vcpkg/installed/x64-windows"
           )
           $protobufDir = $null
           foreach ($path in $searchPaths) {
-            $configs = Get-ChildItem $path -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue
+            $configs = Get-ChildItem $path -Recurse -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue
             if ($configs) {
               $protobufDir = $configs[0].DirectoryName
               Write-Host "Found ProtobufConfig.cmake at: $protobufDir"
