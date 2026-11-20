@@ -23,18 +23,15 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Cache vcpkg
-        id: vcpkg-cache
+      - name: Cache vcpkg (binary artifacts only)
         uses: actions/cache@v4
         with:
           path: |
-            C:/vcpkg/installed
-            C:/vcpkg/packages
             C:/vcpkg/downloads
-          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_VERSION }}-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-downloads-${{ runner.os }}-${{ env.VCPKG_VERSION }}-${{ hashFiles('vcpkg.json') }}
           restore-keys: |
-            vcpkg-${{ runner.os }}-${{ env.VCPKG_VERSION }}-
-            vcpkg-${{ runner.os }}-
+            vcpkg-downloads-${{ runner.os }}-${{ env.VCPKG_VERSION }}-
+            vcpkg-downloads-${{ runner.os }}-
 
       - name: Cache SDR++ source
         id: sdrpp-cache
@@ -46,9 +43,10 @@ jobs:
           restore-keys: |
             sdrpp-src-${{ runner.os }}-
 
-      - name: Setup vcpkg
+      - name: Setup vcpkg and install dependencies
         shell: pwsh
         run: |
+          # Setup vcpkg
           if (-not (Test-Path "C:/vcpkg")) {
             git clone --depth 1 --branch ${{ env.VCPKG_VERSION }} https://github.com/microsoft/vcpkg.git C:/vcpkg
             cd C:/vcpkg; ./bootstrap-vcpkg.bat -disableMetrics
@@ -62,16 +60,14 @@ jobs:
           echo "VCPKG_ROOT=C:/vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "VCPKG_TOOLCHAIN_PATH=C:/vcpkg/scripts/buildsystems/vcpkg.cmake" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Install dependencies
-        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
+          # Install dependencies (vcpkg will use binary cache from downloads)
           cd C:/vcpkg
           $packages = @("protobuf", "cryptopp", "abseil", "fmt", "nlohmann-json", "gtest")
           ./vcpkg install $packages --triplet x64-windows
           Write-Host "=== Installed packages ==="
           ./vcpkg list --triplet x64-windows
 
+          # Find ProtobufConfig.cmake
           Write-Host "=== Finding ProtobufConfig.cmake ==="
           $protobufConfigs = Get-ChildItem "C:/vcpkg/installed/x64-windows" -Recurse -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue
           if ($protobufConfigs) {
@@ -79,36 +75,8 @@ jobs:
             Write-Host "Found ProtobufConfig.cmake at: $protobufDir"
             echo "PROTOBUF_CONFIG_DIR=$protobufDir" | Out-File -FilePath $env:GITHUB_ENV -Append
           } else {
-            Write-Host "WARNING: ProtobufConfig.cmake not found!"
-          }
-
-      - name: Verify cached dependencies
-        if: steps.vcpkg-cache.outputs.cache-hit == 'true'
-        shell: pwsh
-        run: |
-          Write-Host "=== Verifying cached packages ==="
-          ./vcpkg list --triplet x64-windows
-
-          Write-Host "=== Finding ProtobufConfig.cmake ==="
-          $protobufConfigs = Get-ChildItem "C:/vcpkg/installed/x64-windows" -Recurse -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue
-          if ($protobufConfigs) {
-            $protobufDir = $protobufConfigs[0].DirectoryName
-            Write-Host "Found ProtobufConfig.cmake at: $protobufDir"
-            echo "PROTOBUF_CONFIG_DIR=$protobufDir" | Out-File -FilePath $env:GITHUB_ENV -Append
-          } else {
-            Write-Host "WARNING: ProtobufConfig.cmake not found in cache, reinstalling..."
-            $packages = @("protobuf", "cryptopp", "abseil", "fmt", "nlohmann-json", "gtest")
-            ./vcpkg install $packages --triplet x64-windows
-
-            $protobufConfigs = Get-ChildItem "C:/vcpkg/installed/x64-windows" -Recurse -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue
-            if ($protobufConfigs) {
-              $protobufDir = $protobufConfigs[0].DirectoryName
-              Write-Host "Found ProtobufConfig.cmake at: $protobufDir"
-              echo "PROTOBUF_CONFIG_DIR=$protobufDir" | Out-File -FilePath $env:GITHUB_ENV -Append
-            } else {
-              Write-Host "ERROR: ProtobufConfig.cmake still not found after reinstall!"
-              exit 1
-            }
+            Write-Host "ERROR: ProtobufConfig.cmake not found!"
+            exit 1
           }
 
       - name: Fetch SDR++ source (shallow, cached)
@@ -223,18 +191,13 @@ jobs:
           }
           Write-Host "Config file verified: $configFile"
 
-          # Always find ProtobufConfig.cmake in vcpkg installed directory
-          Write-Host "=== Finding ProtobufConfig.cmake ==="
-          $protobufConfigs = Get-ChildItem "C:/vcpkg/installed/x64-windows" -Recurse -Filter "ProtobufConfig.cmake" -ErrorAction SilentlyContinue
-          if ($protobufConfigs) {
-            $protobufDir = $protobufConfigs[0].DirectoryName
-            Write-Host "Found ProtobufConfig.cmake at: $protobufDir"
-          } else {
-            Write-Host "ERROR: ProtobufConfig.cmake not found in vcpkg installed directory!"
-            Write-Host "=== Listing installed packages ==="
-            & C:/vcpkg/vcpkg list --triplet x64-windows
+          # Use Protobuf_DIR from environment (set in setup step)
+          $protobufDir = $env:PROTOBUF_CONFIG_DIR
+          if (-not $protobufDir) {
+            Write-Host "ERROR: PROTOBUF_CONFIG_DIR not set in environment!"
             exit 1
           }
+          Write-Host "Using Protobuf_DIR=$protobufDir"
 
           $cmakeArgs = @(
             '-S', '.'
