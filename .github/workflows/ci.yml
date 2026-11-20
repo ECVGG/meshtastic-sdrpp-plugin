@@ -67,10 +67,11 @@ jobs:
           Write-Host "=== Installed packages ==="
           ./vcpkg list --triplet x64-windows
 
-          # Find ProtobufConfig.cmake (typically in installed/x64-windows/share/protobuf/)
+          # Find ProtobufConfig.cmake (typically in installed/x64-windows/share/protobuf/cmake/)
           Write-Host "=== Finding ProtobufConfig.cmake ==="
           # Common locations in vcpkg (search recursively in each)
           $searchPaths = @(
+            "C:/vcpkg/installed/x64-windows/share/protobuf/cmake",
             "C:/vcpkg/installed/x64-windows/tools/protobuf",
             "C:/vcpkg/installed/x64-windows/share/protobuf",
             "C:/vcpkg/installed/x64-windows/lib/cmake/protobuf",
