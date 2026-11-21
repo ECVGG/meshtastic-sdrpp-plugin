@@ -100,9 +100,19 @@ list(APPEND SRC ${PROTO_SRCS} ${PROTO_HDRS})
 # Create the module target using SDR++'s function
 sdrpp_add_module(meshtastic_decoder ${SRC})
 
-# Add /utf-8 for fmt Unicode support
+# MSVC compile options
 if (MSVC)
-    target_compile_options(meshtastic_decoder PRIVATE /utf-8)
+    target_compile_options(meshtastic_decoder PRIVATE
+        /utf-8
+        # Force-include win32_cleanup.h before every TU so DWORD and other
+        # Windows macros are undefined before protobuf generated headers see them
+        /FI${CMAKE_CURRENT_SOURCE_DIR}/src/win32_cleanup.h
+    )
+    target_compile_definitions(meshtastic_decoder PRIVATE
+        WIN32_LEAN_AND_MEAN
+        NOMINMAX
+        VC_EXTRA_LEAN
+    )
 endif()
 
 # Additional include directories
