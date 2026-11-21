@@ -290,7 +290,7 @@ void MeshtasticDecoderModule::applyChannelPreset(int channelIdx) {
     saveConfig();
 }
 
-static void menuHandler(void* ctx) {
+void MeshtasticDecoderModule::menuHandler(void* ctx) {
     MeshtasticDecoderModule* _this = static_cast<MeshtasticDecoderModule*>(ctx);
 
     // Auto-save config periodically
@@ -605,22 +605,24 @@ void MeshtasticDecoderModule::processIQSamples(const dsp::complex_t* data, size_
             case meshtastic::PortNum::TEXT_MESSAGE_APP: {
                 meshtastic::Data dataMsg;
                 if (decoder.parseAppPayload(meshPacket, dataMsg)) {
-                    msg.text = dataMsg.text();
+                    // Data.payload contains raw UTF-8 text for TEXT_MESSAGE_APP
+                    msg.text = dataMsg.payload();
                 }
                 break;
             }
             case meshtastic::PortNum::POSITION_APP: {
                 meshtastic::Position pos;
                 if (decoder.parseAppPayload(meshPacket, pos)) {
+                    // latitude_i and longitude_i are integers scaled by 1e7
                     msg.position = fmt::format("Lat: {:.6f}, Lon: {:.6f}, Alt: {}m",
-                        pos.latitude(),
-                        pos.longitude(),
+                        pos.latitude_i() * 1e-7,
+                        pos.longitude_i() * 1e-7,
                         pos.altitude());
                 }
                 break;
             }
-            // Telemetry typically uses port 65 (not in older protobuf enum)
-            case 65: {
+            // Telemetry uses TELEMETRY_APP = 67 in Meshtastic protobufs
+            case 67: {
                 meshtastic::Telemetry telemetry;
                 if (decoder.parseAppPayload(meshPacket, telemetry)) {
                     if (telemetry.has_device_metrics()) {

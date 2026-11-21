@@ -74,7 +74,7 @@ std::vector<LoRaPacket> LoRaDemodulator::process(const dsp::complex_t* iq, size_
 
     int M = 1 << builtinState->sf;
     int samplesPerSymbol = static_cast<int>(sampleRate * M / builtinState->bw);
-    int preambleSymbols = 8 + 4.25;
+    int preambleSymbols = 12; // 8 preamble + ~4.25 SFD, truncated
     int minSamples = samplesPerSymbol * preambleSymbols;
 
     builtinState->buffer.insert(builtinState->buffer.end(), iq, iq + count);
@@ -410,12 +410,10 @@ bool LoRaDemodulator::checkCRC(const std::vector<uint8_t>& data) {
     // CRC16-CCITT (0x1021) - used by Meshtastic
     uint16_t calcCRC = 0xFFFF;
     for (size_t i = 0; i < data.size() - 2; ++i) {
-        calcCRC ^= (uint16_t)data[i] << 8;
+        calcCRC ^= static_cast<uint16_t>(data[i]) << 8;
         for (int j = 0; j < 8; ++j) {
-            if (calcCRC & 0x8000)
-                calcCRC = (calcCRC << 1) ^ 0x1021;
-            else
-                calcCRC <<= 1;
+            calcCRC = (calcCRC & 0x8000) ? (static_cast<uint16_t>(calcCRC << 1) ^ 0x1021u)
+                                         :  static_cast<uint16_t>(calcCRC << 1);
         }
     }
     return calcCRC == expectedCRC;

@@ -40,7 +40,7 @@ public:
                                 uint8_t& flagsOut);
 
     // Get port number name
-    static std::string getPortName(uint8_t portNum);
+    static std::string getPortName(int portNum);
 
     // Validate CRC16-CCITT
     static bool validateCRC(const std::vector<uint8_t>& data);

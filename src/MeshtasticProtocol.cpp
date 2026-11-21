@@ -30,12 +30,10 @@ std::optional<meshtastic::MeshPacket> MeshtasticProtocol::parsePacket(const std:
 
     uint16_t calcCRC = 0xFFFF;
     for (size_t i = 0; i < payload.size() - 2; ++i) {
-        calcCRC ^= (uint16_t)payload[i] << 8;
+        calcCRC ^= static_cast<uint16_t>(payload[i]) << 8;
         for (int j = 0; j < 8; ++j) {
-            if (calcCRC & 0x8000)
-                calcCRC = (calcCRC << 1) ^ 0x1021;
-            else
-                calcCRC <<= 1;
+            calcCRC = (calcCRC & 0x8000) ? (static_cast<uint16_t>(calcCRC << 1) ^ 0x1021u)
+                                         :  static_cast<uint16_t>(calcCRC << 1);
         }
     }
 
@@ -105,7 +103,8 @@ bool MeshtasticProtocol::parseMeshHeader(const std::vector<uint8_t>& payload,
                                          uint32_t& toNodeId,
                                          uint8_t& portNum,
                                          uint8_t& flagsOut) {
-    if (payload.size() < 13) { // Minimum header size
+    // Minimum: flag(1) + packetId(4) + from(4) + to(4) + hopLimit(1) + hopStart(1) + proto(1) + CRC(2) = 18
+    if (payload.size() < 18) {
         return false;
     }
 
@@ -116,16 +115,11 @@ bool MeshtasticProtocol::parseMeshHeader(const std::vector<uint8_t>& payload,
 
     // Extract fields (little-endian)
     flags = payload[0];
-    packetId = payload[1] | (payload[2] << 8) | (payload[3] << 16) | (payload[4] << 24);
-    fromNode = payload[5] | (payload[6] << 8) | (payload[7] << 16) | (payload[8] << 24);
-    toNode = payload[9] | (payload[10] << 8) | (payload[11] << 16) | (payload[12] << 24);
-    hopLimit = payload[13];
-    hopStart = payload[14];
-
-    // CRC16-CCITT at end (2 bytes)
-    if (payload.size() < 17) { // header(15) + protobuf(min 1) + CRC(2)
-        return false;
-    }
+    packetId  = (uint32_t)payload[1] | ((uint32_t)payload[2] << 8) | ((uint32_t)payload[3] << 16) | ((uint32_t)payload[4] << 24);
+    fromNode  = (uint32_t)payload[5] | ((uint32_t)payload[6] << 8) | ((uint32_t)payload[7] << 16) | ((uint32_t)payload[8] << 24);
+    toNode    = (uint32_t)payload[9] | ((uint32_t)payload[10] << 8) | ((uint32_t)payload[11] << 16) | ((uint32_t)payload[12] << 24);
+    hopLimit  = payload[13];
+    hopStart  = payload[14];
 
     // Verify CRC16-CCITT (0x1021)
     size_t crcPos = payload.size() - 2;
@@ -133,12 +127,10 @@ bool MeshtasticProtocol::parseMeshHeader(const std::vector<uint8_t>& payload,
 
     uint16_t calcCRC = 0xFFFF;
     for (size_t i = 0; i < payload.size() - 2; ++i) {
-        calcCRC ^= (uint16_t)payload[i] << 8;
+        calcCRC ^= static_cast<uint16_t>(payload[i]) << 8;
         for (int j = 0; j < 8; ++j) {
-            if (calcCRC & 0x8000)
-                calcCRC = (calcCRC << 1) ^ 0x1021;
-            else
-                calcCRC <<= 1;
+            calcCRC = (calcCRC & 0x8000) ? (static_cast<uint16_t>(calcCRC << 1) ^ 0x1021u)
+                                         :  static_cast<uint16_t>(calcCRC << 1);
         }
     }
 
@@ -146,11 +138,14 @@ bool MeshtasticProtocol::parseMeshHeader(const std::vector<uint8_t>& payload,
         return false;
     }
 
-    flags = payload[0];
+    fromNodeId = fromNode;
+    toNodeId   = toNode;
+    portNum    = 0; // portNum is inside the protobuf, not in the LoRa header
+    flagsOut   = flags;
     return true;
 }
 
-std::string MeshtasticProtocol::getPortName(uint8_t portNum) {
+std::string MeshtasticProtocol::getPortName(int portNum) {
     switch (portNum) {
         case 0: return "UNKNOWN_APP";
         case 1: return "TEXT_MESSAGE_APP";
@@ -180,12 +175,10 @@ bool MeshtasticProtocol::validateCRC(const std::vector<uint8_t>& data) {
 
     uint16_t calcCRC = 0xFFFF;
     for (size_t i = 0; i < data.size() - 2; ++i) {
-        calcCRC ^= (uint16_t)data[i] << 8;
+        calcCRC ^= static_cast<uint16_t>(data[i]) << 8;
         for (int j = 0; j < 8; ++j) {
-            if (calcCRC & 0x8000)
-                calcCRC = (calcCRC << 1) ^ 0x1021;
-            else
-                calcCRC <<= 1;
+            calcCRC = (calcCRC & 0x8000) ? (static_cast<uint16_t>(calcCRC << 1) ^ 0x1021u)
+                                         :  static_cast<uint16_t>(calcCRC << 1);
         }
     }
 

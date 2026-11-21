@@ -12,7 +12,7 @@ env:
   VCPKG_VERSION: "2024.10.11"
   SDRPP_REPO: "https://github.com/AlexandreRouma/SDRPlusPlus.git"
   SDRPP_COMMIT: "master"
-  MESHTASTIC_FIRMWARE_COMMIT: "968692d82394c241461f8b9488b5042da9764e65"
+  MESHTASTIC_PROTOBUFS_COMMIT: "40e5fec1549a9aeaeedf3cb997bf15e10e32d7c3"
 
 jobs:
   build:
@@ -24,14 +24,14 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Pin Meshtastic firmware submodule
+      - name: Pin Meshtastic protobufs submodule
         shell: pwsh
         run: |
           cd proto/meshtastic
-          git fetch --depth 1 origin ${{ env.MESHTASTIC_FIRMWARE_COMMIT }}
-          git checkout ${{ env.MESHTASTIC_FIRMWARE_COMMIT }}
+          git fetch --depth 1 origin ${{ env.MESHTASTIC_PROTOBUFS_COMMIT }}
+          git checkout ${{ env.MESHTASTIC_PROTOBUFS_COMMIT }}
           cd ../..
-          Write-Host "Meshtastic firmware pinned to ${{ env.MESHTASTIC_FIRMWARE_COMMIT }}"
+          Write-Host "Meshtastic protobufs pinned to ${{ env.MESHTASTIC_PROTOBUFS_COMMIT }}"
 
       - name: Cache vcpkg downloads
         uses: actions/cache@v4
