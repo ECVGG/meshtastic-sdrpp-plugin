@@ -22,11 +22,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          fetch-depth: 0
+          submodules: false
 
-      - name: Pin Meshtastic firmware submodule
+      - name: Initialize Meshtastic firmware submodule
         shell: pwsh
         run: |
+          git submodule update --init --recursive proto/meshtastic
           cd proto/meshtastic
           git fetch --depth 1 origin ${{ env.MESHTASTIC_FIRMWARE_COMMIT }}
           git checkout ${{ env.MESHTASTIC_FIRMWARE_COMMIT }}
