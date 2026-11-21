@@ -16,9 +16,10 @@ find_package(Cryptopp CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 find_package(absl CONFIG REQUIRED)
 
-# Proto files from Meshtastic firmware submodule (proto/meshtastic/protobufs/meshtastic/)
-set(MESHTASTIC_PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/protobufs/meshtastic")
-set(MESHTASTIC_PROTO_IMPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/protobufs")
+# Proto files from Meshtastic protobufs submodule
+# protobufs.git structure: meshtastic/*.proto at root, nanopb.proto also at root
+set(MESHTASTIC_PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/meshtastic")
+set(MESHTASTIC_PROTO_IMPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic")
 
 set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/mesh.proto"
@@ -40,7 +41,7 @@ set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/connection_status.proto"
     "${MESHTASTIC_PROTO_DIR}/atak.proto"
     "${MESHTASTIC_PROTO_DIR}/xmodem.proto"
-    "${MESHTASTIC_PROTO_DIR}/nanopb.proto"
+    "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/nanopb.proto"
 )
 
 # Generate protobuf files (flat in build dir)
