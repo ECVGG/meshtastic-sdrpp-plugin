@@ -44,24 +44,54 @@ set(MESHTASTIC_PROTO_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/nanopb.proto"
 )
 
-# Generate protobuf files preserving directory structure under build/
-# protobuf_generate with PROTOC_OUT_DIR + APPEND_PATH FALSE puts files in
-# build/meshtastic/xxx.pb.cc matching the import path relative to IMPORT_DIRS
+# Generate protobuf files using protoc directly so output lands in build/meshtastic/
+# and build/ (for nanopb), matching the #include "meshtastic/xxx.pb.h" pattern.
+find_program(PROTOC_EXECUTABLE protoc REQUIRED)
+
 set(PROTO_SRCS)
 set(PROTO_HDRS)
-protobuf_generate(
-    LANGUAGE cpp
-    OUT_VAR PROTO_SRCS
-    PROTOS ${MESHTASTIC_PROTO_FILES}
-    IMPORT_DIRS ${MESHTASTIC_PROTO_IMPORT_DIR}
-    PROTOC_OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}
-    APPEND_PATH FALSE
+
+# meshtastic/*.proto -> build/meshtastic/xxx.pb.{cc,h}
+set(MESHTASTIC_PROTO_NAMES
+    mesh telemetry channel portnums admin config deviceonly interdevice
+    localonly mqtt remote_hardware serial_hal storeforward field_metadata
+    device_ui module_config connection_status atak xmodem
 )
-# Collect the generated headers separately
-foreach(_src ${PROTO_SRCS})
-    string(REPLACE ".pb.cc" ".pb.h" _hdr "${_src}")
-    list(APPEND PROTO_HDRS "${_hdr}")
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/meshtastic)
+foreach(_name ${MESHTASTIC_PROTO_NAMES})
+    set(_proto "${MESHTASTIC_PROTO_DIR}/${_name}.proto")
+    set(_pb_cc "${CMAKE_CURRENT_BINARY_DIR}/meshtastic/${_name}.pb.cc")
+    set(_pb_h  "${CMAKE_CURRENT_BINARY_DIR}/meshtastic/${_name}.pb.h")
+    add_custom_command(
+        OUTPUT ${_pb_cc} ${_pb_h}
+        COMMAND ${PROTOC_EXECUTABLE}
+            --cpp_out=${CMAKE_CURRENT_BINARY_DIR}
+            -I${MESHTASTIC_PROTO_IMPORT_DIR}
+            ${_proto}
+        DEPENDS ${_proto}
+        COMMENT "Generating ${_name}.pb.cc/.h"
+        VERBATIM
+    )
+    list(APPEND PROTO_SRCS ${_pb_cc})
+    list(APPEND PROTO_HDRS ${_pb_h})
 endforeach()
+
+# nanopb.proto is at the root of the submodule -> build/nanopb.pb.{cc,h}
+set(_nanopb_proto "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/nanopb.proto")
+set(_nanopb_cc "${CMAKE_CURRENT_BINARY_DIR}/nanopb.pb.cc")
+set(_nanopb_h  "${CMAKE_CURRENT_BINARY_DIR}/nanopb.pb.h")
+add_custom_command(
+    OUTPUT ${_nanopb_cc} ${_nanopb_h}
+    COMMAND ${PROTOC_EXECUTABLE}
+        --cpp_out=${CMAKE_CURRENT_BINARY_DIR}
+        -I${MESHTASTIC_PROTO_IMPORT_DIR}
+        ${_nanopb_proto}
+    DEPENDS ${_nanopb_proto}
+    COMMENT "Generating nanopb.pb.cc/.h"
+    VERBATIM
+)
+list(APPEND PROTO_SRCS ${_nanopb_cc})
+list(APPEND PROTO_HDRS ${_nanopb_h})
 
 # Sources - must be set before including sdrpp_module.cmake
 file(GLOB_RECURSE SRC "src/*.cpp" "src/*.h" "include/*.h")
