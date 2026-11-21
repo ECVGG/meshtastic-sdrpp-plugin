@@ -16,9 +16,10 @@ find_package(Cryptopp CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 find_package(absl CONFIG REQUIRED)
 
-# Proto files from Meshtastic firmware submodule (proto/meshtastic/protobufs/meshtastic/)
-set(MESHTASTIC_PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/protobufs/meshtastic")
-set(MESHTASTIC_PROTO_IMPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/protobufs")
+# Proto files from Meshtastic protobufs submodule
+# protobufs.git structure: meshtastic/*.proto at root, nanopb.proto also at root
+set(MESHTASTIC_PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/meshtastic")
+set(MESHTASTIC_PROTO_IMPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic")
 
 set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/mesh.proto"
@@ -40,180 +41,57 @@ set(MESHTASTIC_PROTO_FILES
     "${MESHTASTIC_PROTO_DIR}/connection_status.proto"
     "${MESHTASTIC_PROTO_DIR}/atak.proto"
     "${MESHTASTIC_PROTO_DIR}/xmodem.proto"
-    "${MESHTASTIC_PROTO_DIR}/nanopb.proto"
+    "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/nanopb.proto"
 )
 
-# Generate protobuf files (flat in build dir)
-protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${MESHTASTIC_PROTO_FILES}
-    IMPORT_DIRS ${MESHTASTIC_PROTO_IMPORT_DIR}
-)
+# Generate protobuf files using protoc directly so output lands in build/meshtastic/
+# and build/ (for nanopb), matching the #include "meshtastic/xxx.pb.h" pattern.
+find_program(PROTOC_EXECUTABLE protoc REQUIRED)
 
-# Create meshtastic subdirectory and copy generated files there
-# Generated headers include each other as #include "meshtastic/xxx.pb.h"
-# so they need to be in build/meshtastic/
-# Use individual copy commands for each known proto file (wildcards don't work in copy_if_different)
-set(MESHTASTIC_PROTO_BASENAMES
-    mesh
-    telemetry
-    channel
-    portnums
-    admin
-    config
-    deviceonly
-    interdevice
-    localonly
-    mqtt
-    remote_hardware
-    serial_hal
-    storeforward
-    field_metadata
-    device_ui
-    module_config
-    connection_status
-    atak
-    xmodem
-    nanopb
-)
+set(PROTO_SRCS)
+set(PROTO_HDRS)
 
-# Build list of output files for the custom target
-set(MESHTASTIC_GENERATED_HDRS)
-set(MESHTASTIC_GENERATED_SRCS)
-foreach(basename ${MESHTASTIC_PROTO_BASENAMES})
-    list(APPEND MESHTASTIC_GENERATED_HDRS ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/${basename}.pb.h)
-    list(APPEND MESHTASTIC_GENERATED_SRCS ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/${basename}.pb.cc)
+# meshtastic/*.proto -> build/meshtastic/xxx.pb.{cc,h}
+set(MESHTASTIC_PROTO_NAMES
+    mesh telemetry channel portnums admin config deviceonly interdevice
+    localonly mqtt remote_hardware serial_hal storeforward field_metadata
+    device_ui module_config connection_status atak xmodem
+)
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/meshtastic)
+foreach(_name ${MESHTASTIC_PROTO_NAMES})
+    set(_proto "${MESHTASTIC_PROTO_DIR}/${_name}.proto")
+    set(_pb_cc "${CMAKE_CURRENT_BINARY_DIR}/meshtastic/${_name}.pb.cc")
+    set(_pb_h  "${CMAKE_CURRENT_BINARY_DIR}/meshtastic/${_name}.pb.h")
+    add_custom_command(
+        OUTPUT ${_pb_cc} ${_pb_h}
+        COMMAND ${PROTOC_EXECUTABLE}
+            --cpp_out=${CMAKE_CURRENT_BINARY_DIR}
+            -I${MESHTASTIC_PROTO_IMPORT_DIR}
+            ${_proto}
+        DEPENDS ${_proto}
+        COMMENT "Generating ${_name}.pb.cc/.h"
+        VERBATIM
+    )
+    list(APPEND PROTO_SRCS ${_pb_cc})
+    list(APPEND PROTO_HDRS ${_pb_h})
 endforeach()
 
-# Custom command to copy each generated file to meshtastic subdirectory
+# nanopb.proto is at the root of the submodule -> build/nanopb.pb.{cc,h}
+set(_nanopb_proto "${CMAKE_CURRENT_SOURCE_DIR}/proto/meshtastic/nanopb.proto")
+set(_nanopb_cc "${CMAKE_CURRENT_BINARY_DIR}/nanopb.pb.cc")
+set(_nanopb_h  "${CMAKE_CURRENT_BINARY_DIR}/nanopb.pb.h")
 add_custom_command(
-    OUTPUT ${MESHTASTIC_GENERATED_HDRS} ${MESHTASTIC_GENERATED_SRCS}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/meshtastic
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/mesh.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/mesh.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/mesh.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/mesh.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/telemetry.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/telemetry.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/telemetry.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/telemetry.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/channel.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/channel.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/channel.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/channel.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/portnums.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/portnums.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/portnums.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/portnums.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/admin.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/admin.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/admin.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/admin.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/config.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/config.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/config.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/config.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/deviceonly.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/deviceonly.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/deviceonly.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/deviceonly.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/interdevice.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/interdevice.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/interdevice.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/interdevice.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/localonly.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/localonly.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/localonly.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/localonly.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/mqtt.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/mqtt.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/mqtt.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/mqtt.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/remote_hardware.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/remote_hardware.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/remote_hardware.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/remote_hardware.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/serial_hal.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/serial_hal.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/serial_hal.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/serial_hal.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/storeforward.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/storeforward.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/storeforward.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/storeforward.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/field_metadata.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/field_metadata.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/field_metadata.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/field_metadata.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/device_ui.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/device_ui.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/device_ui.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/device_ui.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/module_config.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/module_config.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/module_config.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/module_config.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/connection_status.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/connection_status.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/connection_status.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/connection_status.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/atak.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/atak.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/atak.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/atak.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/xmodem.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/xmodem.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/xmodem.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/xmodem.pb.cc
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/nanopb.pb.h
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/nanopb.pb.h
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_BINARY_DIR}/nanopb.pb.cc
-        ${CMAKE_CURRENT_BINARY_DIR}/meshtastic/nanopb.pb.cc
-    DEPENDS ${PROTO_HDRS} ${PROTO_SRCS}
-    COMMENT "Copy generated protobuf files to meshtastic subdirectory"
+    OUTPUT ${_nanopb_cc} ${_nanopb_h}
+    COMMAND ${PROTOC_EXECUTABLE}
+        --cpp_out=${CMAKE_CURRENT_BINARY_DIR}
+        -I${MESHTASTIC_PROTO_IMPORT_DIR}
+        ${_nanopb_proto}
+    DEPENDS ${_nanopb_proto}
+    COMMENT "Generating nanopb.pb.cc/.h"
     VERBATIM
 )
-
-# Custom target to ensure proto files are copied before building
-add_custom_target(copy_proto_files DEPENDS ${MESHTASTIC_GENERATED_HDRS} ${MESHTASTIC_GENERATED_SRCS})
+list(APPEND PROTO_SRCS ${_nanopb_cc})
+list(APPEND PROTO_HDRS ${_nanopb_h})
 
 # Sources - must be set before including sdrpp_module.cmake
 file(GLOB_RECURSE SRC "src/*.cpp" "src/*.h" "include/*.h")
@@ -222,18 +100,24 @@ list(APPEND SRC ${PROTO_SRCS} ${PROTO_HDRS})
 # Create the module target using SDR++'s function
 sdrpp_add_module(meshtastic_decoder ${SRC})
 
-# Ensure proto files are copied before building
-add_dependencies(meshtastic_decoder copy_proto_files)
-
-# Add /utf-8 for fmt Unicode support
+# MSVC compile options
 if (MSVC)
-    target_compile_options(meshtastic_decoder PRIVATE /utf-8)
+    target_compile_options(meshtastic_decoder PRIVATE
+        /utf-8
+        # Force-include win32_cleanup.h before every TU so DWORD and other
+        # Windows macros are undefined before protobuf generated headers see them
+        /FI${CMAKE_CURRENT_SOURCE_DIR}/src/win32_cleanup.h
+    )
+    target_compile_definitions(meshtastic_decoder PRIVATE
+        WIN32_LEAN_AND_MEAN
+        NOMINMAX
+        VC_EXTRA_LEAN
+    )
 endif()
 
 # Additional include directories
 # Generated proto headers are in build/meshtastic/ - they include each other as #include "meshtastic/xxx.pb.h"
 # Source files include them as #include <meshtastic/mesh.pb.h> so we need build/ in include path
-# SDRPlusPlus_INCLUDE_DIRS already contains imgui paths from the generated config
 target_include_directories(meshtastic_decoder PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/include
