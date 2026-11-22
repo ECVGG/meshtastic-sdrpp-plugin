@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  VCPKG_VERSION: "2024.10.11"
+  VCPKG_VERSION: "2024.06.15"
   SDRPP_REPO: "https://github.com/AlexandreRouma/SDRPlusPlus.git"
   SDRPP_COMMIT: "master"
   MESHTASTIC_PROTOBUFS_COMMIT: "40e5fec1549a9aeaeedf3cb997bf15e10e32d7c3"
