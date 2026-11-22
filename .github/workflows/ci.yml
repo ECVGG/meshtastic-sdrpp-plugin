@@ -170,33 +170,6 @@ jobs:
           if ($exitCode -ne 0) { throw "cmake configure failed with exit code $exitCode" }
           Write-Host "Configure step completed successfully"
 
-      - name: Patch Windows macro conflicts in generated protobuf headers
-        shell: pwsh
-        run: |
-          $guard = "#ifdef _WIN32`n"
-          $guard += "#  ifdef DWORD`n#    undef DWORD`n#  endif`n"
-          $guard += "#  ifdef BYTE`n#    undef BYTE`n#  endif`n"
-          $guard += "#  ifdef WORD`n#    undef WORD`n#  endif`n"
-          $guard += "#  ifdef BOOL`n#    undef BOOL`n#  endif`n"
-          $guard += "#  ifdef ERROR`n#    undef ERROR`n#  endif`n"
-          $guard += "#  ifdef OPTIONAL`n#    undef OPTIONAL`n#  endif`n"
-          $guard += "#  ifdef NEAR`n#    undef NEAR`n#  endif`n"
-          $guard += "#  ifdef FAR`n#    undef FAR`n#  endif`n"
-          $guard += "#endif`n"
-          $pbHeaders = Get-ChildItem -Path "build/meshtastic" -Filter "*.pb.h" -ErrorAction SilentlyContinue
-          if ($pbHeaders) {
-            foreach ($f in $pbHeaders) {
-              $content = Get-Content $f.FullName -Raw
-              if ($content -match '#pragma once') {
-                $patched = $content -replace '(#pragma once\r?\n)', ("`$1`n" + $guard + "`n")
-                Set-Content -Path $f.FullName -Value $patched -NoNewline
-                Write-Host "Patched: $($f.Name)"
-              }
-            }
-          } else {
-            Write-Host "No .pb.h files found in build/meshtastic - skipping patch"
-          }
-
       - name: Build
         shell: pwsh
         run: cmake --build build --config Release --parallel

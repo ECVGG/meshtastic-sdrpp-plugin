@@ -68,6 +68,9 @@ foreach(_name ${MESHTASTIC_PROTO_NAMES})
             --cpp_out=${CMAKE_CURRENT_BINARY_DIR}
             -I${MESHTASTIC_PROTO_IMPORT_DIR}
             ${_proto}
+        COMMAND ${CMAKE_COMMAND}
+            -DFILE=${_pb_h}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_pb_header.cmake
         DEPENDS ${_proto}
         COMMENT "Generating ${_name}.pb.cc/.h"
         VERBATIM
@@ -102,12 +105,7 @@ sdrpp_add_module(meshtastic_decoder ${SRC})
 
 # MSVC compile options
 if (MSVC)
-    target_compile_options(meshtastic_decoder PRIVATE
-        /utf-8
-        # Force-include win32_cleanup.h before every TU so DWORD and other
-        # Windows macros are undefined before protobuf generated headers see them
-        /FI${CMAKE_CURRENT_SOURCE_DIR}/src/win32_cleanup.h
-    )
+    target_compile_options(meshtastic_decoder PRIVATE /utf-8)
     target_compile_definitions(meshtastic_decoder PRIVATE
         WIN32_LEAN_AND_MEAN
         NOMINMAX
