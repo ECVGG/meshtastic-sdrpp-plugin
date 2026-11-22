@@ -1,4 +1,4 @@
 [submodule "proto/meshtastic"]
 	path = proto/meshtastic
-	url = https://github.com/meshtastic/firmware.git
+	url = https://github.com/meshtastic/protobufs.git
 	branch = master

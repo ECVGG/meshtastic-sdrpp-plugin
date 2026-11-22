@@ -12,7 +12,7 @@ env:
   VCPKG_VERSION: "2024.10.11"
   SDRPP_REPO: "https://github.com/AlexandreRouma/SDRPlusPlus.git"
   SDRPP_COMMIT: "master"
-  MESHTASTIC_FIRMWARE_COMMIT: "968692d82394c241461f8b9488b5042da9764e65"
+  MESHTASTIC_PROTOBUFS_COMMIT: "40e5fec1549a9aeaeedf3cb997bf15e10e32d7c3"
 
 jobs:
   build:
@@ -22,18 +22,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          submodules: false
+          submodules: recursive
 
-      - name: Initialize Meshtastic firmware submodule
+      - name: Pin Meshtastic protobufs submodule
         shell: pwsh
         run: |
-          git submodule update --init --recursive proto/meshtastic
+          git submodule update --init proto/meshtastic
           cd proto/meshtastic
-          git fetch --depth 1 origin ${{ env.MESHTASTIC_FIRMWARE_COMMIT }}
-          git checkout ${{ env.MESHTASTIC_FIRMWARE_COMMIT }}
+          git fetch --depth 1 origin ${{ env.MESHTASTIC_PROTOBUFS_COMMIT }}
+          git checkout ${{ env.MESHTASTIC_PROTOBUFS_COMMIT }}
           cd ../..
-          Write-Host "Meshtastic firmware pinned to ${{ env.MESHTASTIC_FIRMWARE_COMMIT }}"
+          Write-Host "Meshtastic protobufs pinned to ${{ env.MESHTASTIC_PROTOBUFS_COMMIT }}"
 
       - name: Cache vcpkg downloads
         uses: actions/cache@v4
@@ -170,6 +169,56 @@ jobs:
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { throw "cmake configure failed with exit code $exitCode" }
           Write-Host "Configure step completed successfully"
+
+      - name: Patch Windows macro conflicts in generated protobuf headers
+        shell: pwsh
+        run: |
+          # Windows defines DWORD/BYTE/WORD as macros which clash with protobuf-generated
+          # enum constants (e.g. meshtastic::ModuleConfig_SerialConfig::DWORD).
+          # Patch the generated .pb.h files to undefine conflicting macros at the top.
+          $guardBlock = @"
+// Undefine Windows macros that clash with protobuf enum names
+#ifdef _WIN32
+#  ifdef DWORD
+#    undef DWORD
+#  endif
+#  ifdef BYTE
+#    undef BYTE
+#  endif
+#  ifdef WORD
+#    undef WORD
+#  endif
+#  ifdef BOOL
+#    undef BOOL
+#  endif
+#  ifdef ERROR
+#    undef ERROR
+#  endif
+#  ifdef OPTIONAL
+#    undef OPTIONAL
+#  endif
+#  ifdef NEAR
+#    undef NEAR
+#  endif
+#  ifdef FAR
+#    undef FAR
+#  endif
+#endif
+"@
+          $pbHeaders = Get-ChildItem -Path "build/meshtastic" -Filter "*.pb.h" -ErrorAction SilentlyContinue
+          if ($pbHeaders) {
+            foreach ($f in $pbHeaders) {
+              $content = Get-Content $f.FullName -Raw
+              # Insert guard block after the first #pragma once line
+              if ($content -match '#pragma once') {
+                $patched = $content -replace '(#pragma once\r?\n)', "`$1`n$guardBlock`n"
+                Set-Content -Path $f.FullName -Value $patched -NoNewline
+                Write-Host "Patched: $($f.Name)"
+              }
+            }
+          } else {
+            Write-Host "No .pb.h files found in build/meshtastic - skipping patch"
+          }
 
       - name: Build
         shell: pwsh
