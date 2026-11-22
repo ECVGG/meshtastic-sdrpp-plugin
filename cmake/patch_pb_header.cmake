@@ -1,11 +1,14 @@
 # patch_pb_header.cmake
 # Called as: cmake -DFILE=path/to/xxx.pb.h -P patch_pb_header.cmake
 #
-# Inserts #undef guards for Windows macros AFTER google/protobuf/port_def.inc
-# is included. port_def.inc includes <windows.h> on MSVC which defines DWORD
-# et al. as macros. Those macros then conflict with protobuf enum constant names
-# inside class bodies. By undeffing right after port_def.inc we ensure the
-# undefs run after windows.h but before any class definitions.
+# Uses #pragma push_macro / pop_macro (MSVC + GCC/Clang support) to temporarily
+# suppress Windows macros that conflict with protobuf enum constant names inside
+# class bodies. This is inserted AFTER all #include directives at the top of the
+# generated .pb.h, immediately before the first namespace declaration, ensuring
+# it runs after all windows.h inclusions (direct or via port_def.inc).
+#
+# This approach is robust because push_macro/pop_macro work at the preprocessor
+# level regardless of include order, and the pop at EOF restores original state.
 
 if(NOT DEFINED FILE)
     message(FATAL_ERROR "FILE variable not set")
@@ -13,37 +16,83 @@ endif()
 
 file(READ "${FILE}" content)
 
-# Only patch if not already patched
-if(NOT content MATCHES "undef DWORD.*port_def")
-    set(anchor "#include \"google/protobuf/port_def.inc\"")
-    if(content MATCHES "${anchor}")
-        set(undef_block
-            "\n// Undefine Windows macros that clash with protobuf enum names.\n"
-            "// port_def.inc above includes <windows.h> on MSVC which defines these.\n"
-            "#if defined(_WIN32)\n"
-            "#  if defined(DWORD)\n#    undef DWORD\n#  endif\n"
-            "#  if defined(BYTE)\n#    undef BYTE\n#  endif\n"
-            "#  if defined(WORD)\n#    undef WORD\n#  endif\n"
-            "#  if defined(BOOL)\n#    undef BOOL\n#  endif\n"
-            "#  if defined(ERROR)\n#    undef ERROR\n#  endif\n"
-            "#  if defined(OPTIONAL)\n#    undef OPTIONAL\n#  endif\n"
-            "#  if defined(NEAR)\n#    undef NEAR\n#  endif\n"
-            "#  if defined(FAR)\n#    undef FAR\n#  endif\n"
-            "// undef DWORD port_def (marker for idempotency check)\n"
-            "#endif\n"
-        )
-        string(JOIN "" undef_block ${undef_block})
-        string(REPLACE
-            "${anchor}"
-            "${anchor}${undef_block}"
-            patched
-            "${content}"
-        )
-        file(WRITE "${FILE}" "${patched}")
-        message(STATUS "Patched (port_def undef): ${FILE}")
-    else()
-        message(WARNING "port_def.inc anchor not found in ${FILE}, skipping patch")
-    endif()
-else()
+# Only patch if not already patched (check for our marker)
+if(content MATCHES "PUSH_WIN32_MACROS_FOR_PROTOBUF")
     message(STATUS "Already patched: ${FILE}")
+    return()
 endif()
+
+# The push block: suppress conflicting Windows macros before class definitions.
+# Inserted before the first "namespace" declaration in the file.
+set(push_block
+    "#if defined(_WIN32) && !defined(PUSH_WIN32_MACROS_FOR_PROTOBUF)\n"
+    "#define PUSH_WIN32_MACROS_FOR_PROTOBUF\n"
+    "#pragma push_macro(\"DWORD\")\n"
+    "#pragma push_macro(\"BYTE\")\n"
+    "#pragma push_macro(\"WORD\")\n"
+    "#pragma push_macro(\"BOOL\")\n"
+    "#pragma push_macro(\"ERROR\")\n"
+    "#pragma push_macro(\"OPTIONAL\")\n"
+    "#pragma push_macro(\"NEAR\")\n"
+    "#pragma push_macro(\"FAR\")\n"
+    "#undef DWORD\n"
+    "#undef BYTE\n"
+    "#undef WORD\n"
+    "#undef BOOL\n"
+    "#undef ERROR\n"
+    "#undef OPTIONAL\n"
+    "#undef NEAR\n"
+    "#undef FAR\n"
+    "#endif\n\n"
+)
+string(JOIN "" push_block ${push_block})
+
+# The pop block: restore macros at the very end of the file (before final #endif).
+set(pop_block
+    "\n#ifdef PUSH_WIN32_MACROS_FOR_PROTOBUF\n"
+    "#pragma pop_macro(\"FAR\")\n"
+    "#pragma pop_macro(\"NEAR\")\n"
+    "#pragma pop_macro(\"OPTIONAL\")\n"
+    "#pragma pop_macro(\"ERROR\")\n"
+    "#pragma pop_macro(\"BOOL\")\n"
+    "#pragma pop_macro(\"WORD\")\n"
+    "#pragma pop_macro(\"BYTE\")\n"
+    "#pragma pop_macro(\"DWORD\")\n"
+    "#undef PUSH_WIN32_MACROS_FOR_PROTOBUF\n"
+    "#endif\n"
+)
+string(JOIN "" pop_block ${pop_block})
+
+# Find "namespace " as the insertion anchor for the push block.
+# All generated .pb.h files have this before class definitions.
+set(namespace_anchor "namespace ")
+
+if(NOT content MATCHES "${namespace_anchor}")
+    message(WARNING "Could not find 'namespace ' anchor in ${FILE}, skipping patch")
+    return()
+endif()
+
+# Insert push_block before the first "namespace " occurrence
+string(FIND "${content}" "${namespace_anchor}" first_ns_pos)
+if(first_ns_pos EQUAL -1)
+    message(WARNING "string FIND: 'namespace ' not found in ${FILE}, skipping patch")
+    return()
+endif()
+
+string(SUBSTRING "${content}" 0 ${first_ns_pos} before_ns)
+string(SUBSTRING "${content}" ${first_ns_pos} -1 from_ns)
+
+# Insert pop_block before the final #endif (the include guard closer at EOF)
+# Find last occurrence of "#endif" in from_ns (which is content from namespace onward)
+string(FIND "${from_ns}" "#endif" last_endif_pos REVERSE)
+if(last_endif_pos EQUAL -1)
+    # No #endif found; just append pop at end
+    set(patched "${before_ns}${push_block}${from_ns}${pop_block}")
+else()
+    string(SUBSTRING "${from_ns}" 0 ${last_endif_pos} before_endif)
+    string(SUBSTRING "${from_ns}" ${last_endif_pos} -1 at_endif)
+    set(patched "${before_ns}${push_block}${before_endif}${pop_block}${at_endif}")
+endif()
+
+file(WRITE "${FILE}" "${patched}")
+message(STATUS "Patched (push/pop macros): ${FILE}")
