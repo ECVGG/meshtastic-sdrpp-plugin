@@ -105,11 +105,15 @@ sdrpp_add_module(meshtastic_decoder ${SRC})
 
 # MSVC compile options
 if (MSVC)
-    target_compile_options(meshtastic_decoder PRIVATE /utf-8)
+    target_compile_options(meshtastic_decoder PRIVATE
+        /utf-8
+        # Force-include win32_cleanup.h as the very first header in every TU.
+        # It pre-includes <windows.h> (exhausting its include guard) and then
+        # undefines macros like DWORD that clash with protobuf enum constants.
+        /FI${CMAKE_CURRENT_SOURCE_DIR}/src/win32_cleanup.h
+    )
     target_compile_definitions(meshtastic_decoder PRIVATE
-        WIN32_LEAN_AND_MEAN
         NOMINMAX
-        VC_EXTRA_LEAN
     )
 endif()
 
