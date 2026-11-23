@@ -1,6 +1,21 @@
 ﻿// Meshtastic Decoder Module for SDR++ Portable
 // Self-contained plugin with own config management
 
+// Include Windows.h first with minimal defines, then undef macros that
+// conflict with protobuf 7.x generated identifiers (e.g. DWORD, ERROR).
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#define VC_EXTRA_LEAN
+#include <Windows.h>
+#undef DWORD
+#undef BYTE
+#undef WORD
+#undef BOOL
+#undef ERROR
+#undef OPTIONAL
+#undef NEAR
+#undef FAR
+
 #include "MeshtasticDecoderModule.h"
 #include <module.h>
 #include <gui/gui.h>
@@ -13,7 +28,6 @@
 #include <fstream>
 #include <mutex>
 #include <filesystem>
-#include <Windows.h>
 #include <fmt/format.h>
 #include <chrono>
 #include <deque>

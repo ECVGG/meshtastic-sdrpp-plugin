@@ -68,9 +68,6 @@ foreach(_name ${MESHTASTIC_PROTO_NAMES})
             --cpp_out=${CMAKE_CURRENT_BINARY_DIR}
             -I${MESHTASTIC_PROTO_IMPORT_DIR}
             ${_proto}
-        COMMAND ${CMAKE_COMMAND}
-            -DFILE=${_pb_h}
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/patch_pb_header.cmake
         DEPENDS ${_proto}
         COMMENT "Generating ${_name}.pb.cc/.h"
         VERBATIM
