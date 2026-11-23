@@ -1,4 +1,5 @@
 ﻿#include "MeshtasticDecoder.h"
+#include "win32_cleanup.h"
 #include <meshtastic/mesh.pb.h>
 #include <meshtastic/telemetry.pb.h>
 #include <string>
